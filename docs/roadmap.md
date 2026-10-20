@@ -18,7 +18,7 @@
 | M5 | Alerts | rules, notifications, real-time updates | 🟦 rules engine + lifecycle done; WebSocket ⬜ |
 | M6 | AI / ML | datasets, preprocessing, 3 models, integration | 🟨 fall detection trained (F1 0.80); activity + anomaly still interfaces only |
 | M7 | Analytics | SQL views, exports, Power BI | 🟦 8 views run on real PostgreSQL; exports done; no `.pbix` |
-| M8 | Testing | pytest, vitest, model tests, CI | 🟦 243 backend + AI + 43 frontend tests passing; no CI |
+| M8 | Testing | pytest, vitest, model tests, CI | 🟦 289 backend + AI + 43 frontend tests passing; no CI |
 | M9 | Deployment | Dockerfiles, full compose, final docs | ✅ stack built and run; all 3 services healthy |
 
 ---
@@ -212,7 +212,7 @@ Power BI step itself is unverified — no `.pbix` exists and none is claimed.)*
 - [ ] GitHub Actions (or local script): lint + test on every push
 
 **Done when:** one command runs the full suite and it is green.
-*`pytest -q` runs **242** backend + AI tests and they pass; `npm test` runs
+*`pytest -q` runs **289** backend + AI tests and they pass; `npm test` runs
 **43** frontend tests and they pass. They are still two commands, not one, and
 there is no CI yet.*
 

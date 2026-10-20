@@ -7,7 +7,7 @@
  * such as "this email is already registered".
  */
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { ApiError, NetworkError } from '../api/errors'
@@ -32,9 +32,15 @@ export function LoginPage() {
   const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
 
   // If already signed in (e.g. the token was restored), do not show this page.
-  if (user) {
-    navigate(from, { replace: true })
-  }
+  // This must run in an effect, not during render: calling navigate() while
+  // rendering makes React update a different component mid-render, which warns
+  // "Cannot update a component (BrowserRouter) while rendering a different
+  // component (LoginPage)".
+  useEffect(() => {
+    if (user) {
+      navigate(from, { replace: true })
+    }
+  }, [user, from, navigate])
 
   /** A few checks we can do without asking the server. */
   function validate(): Record<string, string> {

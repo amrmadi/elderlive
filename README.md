@@ -1,5 +1,14 @@
 # ElderLife AI
 
+![Backend tests](https://img.shields.io/badge/backend%20%2B%20AI%20tests-289%20passing-brightgreen)
+![Frontend tests](https://img.shields.io/badge/frontend%20tests-43%20passing-brightgreen)
+![Python](https://img.shields.io/badge/python-3.11--3.13%20recommended-blue)
+![Node](https://img.shields.io/badge/node-20%2B-blue)
+![License](https://img.shields.io/badge/license-academic-lightgrey)
+
+> **Graduation project.** A monitoring system that helps caregivers look after
+> elderly people living at home.
+
 > **Current status: the application runs, is tested, and has been deployed with
 > Docker Compose.** Backend, frontend, database schema, alert rules, analytics
 > SQL, and a **trained fall-detection model** all exist and are verified. The
@@ -14,6 +23,45 @@
 > the API, and the nginx frontend all come up healthy, migrations apply to real
 > PostgreSQL, and the frontend was exercised against the live backend. See
 > [What actually works today](#what-actually-works-today).
+
+---
+
+## Start here
+
+| If you want to… | Read |
+|---|---|
+| **Know what is finished and what is not** | [What actually works today](#what-actually-works-today) |
+| **Run the project on your own machine** | [Getting started on Windows](#getting-started-on-windows) |
+| **Work on the remaining AI / analytics / DevOps tasks** | [`CONTRIBUTING.md`](CONTRIBUTING.md) — task list and how to submit changes |
+| **Understand the architecture** | [`docs/architecture.md`](docs/architecture.md) |
+| **See the API surface** | [`docs/api-contract.md`](docs/api-contract.md) |
+
+---
+
+## Division of work
+
+This repository was built in phases. The table records **who owns what**, so a
+teammate can pick up a task without stepping on someone else's work.
+
+| Area | Owner | State |
+|---|---|---|
+| **Backend API** (`backend/`) | **Backend developer** | ✅ Delivered — 289 tests pass |
+| **Frontend** (`frontend/`) | **Frontend developer** | ✅ Delivered — builds, 43 tests pass |
+| Database schema + migrations | Backend developer | ✅ Delivered |
+| Access control (server-side) | Backend developer | ✅ Delivered |
+| Alert rules engine + KPIs | Backend developer | ✅ Delivered |
+| **Activity recognition model** | *Open — AI teammate* | ⬜ Not started |
+| **Behavioural anomaly model** | *Open — AI teammate* | ⬜ Not started |
+| **Power BI report** | *Open — analytics teammate* | ⬜ Not started (CSV exports exist) |
+| **Real-time alerts (WebSocket)** | *Open — backend teammate* | ⬜ Not started |
+| **CI pipeline** | *Open — DevOps teammate* | ⬜ Not started |
+
+The open items are listed with acceptance criteria in
+[`CONTRIBUTING.md`](CONTRIBUTING.md#open-tasks). Everything marked ✅ has been run
+and verified on this machine; the evidence is in
+[What actually works today](#what-actually-works-today).
+
+---
 
 ElderLife AI is a beginner-friendly graduation project: a system that helps monitor the
 well-being of elderly people at home. It aims to:
@@ -45,7 +93,7 @@ than guessing.
 | Analytics SQL | ✅ 8 views; names real tables/columns | **148 column references** checked against the models |
 | AI **interfaces** | ✅ typed, tested | `ai/tests/` covers the result types, the honesty rules and the registry |
 | AI **models / predictions** | 🟨 **fall detection trained**; activity + anomaly not | Fall detection: **F1 0.80** on 6 unseen adult subjects (SisFall). Others return `503 MODEL_NOT_LOADED` |
-| Docker Compose stack | ✅ **built and run; all three services healthy** | PostgreSQL 16, API, nginx; see [Docker](#docker-optional) |
+| Docker Compose stack | ✅ **built and run; all three services healthy** | PostgreSQL 16, API, nginx; see [Docker](#docker) |
 | Migrations on **real PostgreSQL** | ✅ applied, **no drift** | `alembic upgrade head` → `596dcc02ab32`; `alembic check` → no new operations |
 | Analytics SQL on real PostgreSQL | ✅ **all 8 views created and queried** | Applied with `ON_ERROR_STOP=1`; views return rows from seeded data |
 | Frontend against a live backend | ✅ **verified** | Login → scoped data → all pages `200`, with correct CORS |
@@ -483,11 +531,13 @@ The distinction is enforced in code and covered by tests, not just documented.
   where query plans or indexes would matter.
 - **No `.pbix` file exists.** Power BI reports cannot be generated without the
   desktop application. CSV exports are produced for it instead.
-- **The frontend has been run against the live backend over HTTP**, not yet
-  driven through a real browser in this environment. Login, scoped data,
-  navigation endpoints, CORS, and API error paths were exercised with real HTTP
-  requests; the visual pass is still a manual step (see
-  [Demo walkthrough](#demo-walkthrough)).
+- **The frontend has been run against the live backend over HTTP and loaded in a
+  real browser**: the dev server serves the app, login succeeds from the browser's
+  origin with correct CORS, and the scoped data loads. Driving every click-path in
+  a browser is still a **manual step** — see
+  [Demo walkthrough](#demo-walkthrough). Loading the login page in a browser
+  exposed a genuine React defect (navigating during render in `LoginPage`), which
+  is now fixed and covered by the existing test suite.
 - **WebSocket / real-time updates are not implemented.** The alert list is
   fetched, not pushed.
 - **The seed script is development-only** and refuses to run when
@@ -524,9 +574,11 @@ Each dataset is documented in [`docs/datasets/`](docs/datasets/README.md)
 
 | Document | Contents |
 |---|---|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to run, test, and submit work — plus the open task list |
 | [docs/architecture.md](docs/architecture.md) | Mermaid diagram + component explanation |
 | [docs/api-contract.md](docs/api-contract.md) | API between frontend, backend, AI |
 | [docs/roadmap.md](docs/roadmap.md) | Milestones for every phase |
+| [docs/alert-rules-and-kpis.md](docs/alert-rules-and-kpis.md) | How events become alerts, and how KPIs are computed |
 | [docs/datasets/README.md](docs/datasets/README.md) | Dataset documentation template + index |
 
 ---

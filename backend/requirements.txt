@@ -66,3 +66,14 @@ aiosqlite>=0.20.0
 pytest>=9.1.1
 pytest-asyncio>=0.25.0
 httpx==0.28.1
+
+# --- Machine learning (Phase 5) ---
+# The backend imports the local `ai` package (see app/api/routers/ai.py), so
+# the API cannot start without these. They were previously installed by hand
+# during Phase 5 and were missing from this file, which broke a clean install.
+# Both backend/Dockerfile and a fresh virtualenv need them.
+scikit-learn>=1.9.1
+numpy>=2.5.4
+pandas>=3.0.6
+scipy>=1.18.1          # required transitively by scikit-learn
+joblib>=1.6.0          # used to load the trained model artefacts
