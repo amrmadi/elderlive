@@ -1,12 +1,14 @@
 # ElderLife AI
 
-> **Current status: the application runs, is tested, and can be deployed with
+> **Current status: the application runs, is tested, and has been deployed with
 > Docker Compose.** Backend, frontend, database schema, alert rules, analytics
 > SQL, and the AI *interfaces* all exist and are verified. **No AI model has been
 > trained**, so no prediction is real — see
 > [Real predictions vs simulated events](#real-predictions-vs-simulated-events).
-> PostgreSQL and Docker are **not installed on this machine**, so the container
-> stack is configured and statically validated but has never been run here.
+> The container stack has been built and run on this machine: PostgreSQL 16,
+> the API, and the nginx frontend all come up healthy, migrations apply to real
+> PostgreSQL, and the frontend was exercised against the live backend. See
+> [What actually works today](#what-actually-works-today).
 
 ElderLife AI is a beginner-friendly graduation project: a system that helps monitor the
 well-being of elderly people at home. It aims to:
@@ -35,8 +37,10 @@ The care-management half is built and works on real stored data. The AI half is
 | Analytics SQL | ✅ 8 views; names real tables/columns | **148 column references** checked against the models |
 | AI **interfaces** | ✅ typed, tested | **25 interface tests**; every predictor reports `is_ready: false` |
 | AI **models / predictions** | ❌ **do not exist** | `/ai/predictors/*/check` returns `503 MODEL_NOT_LOADED` |
-| Docker Compose stack | ⚠️ written + statically validated, **never run here** | See [Docker](#docker-optional) |
-| Frontend against a live backend | ❌ not yet done | Outstanding; both halves work separately |
+| Docker Compose stack | ✅ **built and run; all three services healthy** | PostgreSQL 16, API, nginx; see [Docker](#docker-optional) |
+| Migrations on **real PostgreSQL** | ✅ applied, **no drift** | `alembic upgrade head` → `596dcc02ab32`; `alembic check` → no new operations |
+| Analytics SQL on real PostgreSQL | ✅ **all 8 views created and queried** | Applied with `ON_ERROR_STOP=1`; views return rows from seeded data |
+| Frontend against a live backend | ✅ **verified** | Login → scoped data → all pages `200`, with correct CORS |
 
 ---
 
@@ -105,8 +109,8 @@ Every major folder contains its own `README.md` explaining what belongs there.
 | Python 3.11–3.13 | backend, AI | ⚠️ 3.15.0 installed (see note below) |
 | pip | Python packages | ✅ installed (26.2.1) |
 | Git | version control | ✅ installed (2.53.0) |
-| Docker Desktop | the Compose stack | ❌ **not installed** |
-| PostgreSQL | local database | ❌ **not installed** (`psql` not found) |
+| Docker Desktop | the Compose stack | ✅ installed (29.0.1; engine running via WSL2) |
+| PostgreSQL | local database | ✅ available via the `db` container (16-alpine); no host `psql` |
 
 **Note on Python 3.15:** it is very new, so some packages have no pre-built wheel
 for it and `pip` tries to compile them from source, which fails on Windows with
@@ -232,14 +236,32 @@ See [`frontend/README.md`](frontend/README.md).
 
 ---
 
-## Docker (optional)
+## Docker
 
-**Honest status:** the Dockerfiles, `docker-compose.yml`, and `.dockerignore`
-files below are **written and statically validated**, but **no container has been
-built or run on this machine**, because Docker Desktop is not installed. The
-validation checks syntax, cross-references, and file paths — see
-[Verification tools](#verification-tools). It is **not** a substitute for running
-`docker compose up`.
+**Verified status:** the stack has been **built and run on this machine** and all
+three services come up healthy. What was actually executed and observed:
+
+| Step | Result |
+|---|---|
+| `docker compose config` | Interpolates and validates |
+| `docker compose build` | Both images built (`elderlife-backend`, `elderlife-frontend`) |
+| `docker compose up -d` | `db` → healthy, `backend` → healthy, `frontend` → healthy |
+| `docker compose exec backend alembic upgrade head` | `Running upgrade -> 596dcc02ab32` |
+| `alembic current` / `alembic check` | `596dcc02ab32 (head)` / "No new upgrade operations detected" |
+| `\dt` in PostgreSQL | **20 tables** (19 ORM tables + `alembic_version`) |
+| `seed_demo --reset` | Four demo logins created and verified |
+| Analytics SQL applied with `ON_ERROR_STOP=1` | **8 views created**; all return rows from seeded data |
+| Access control over HTTP | Unassigned caregiver `403`; assigned `200`; admin `200`; anonymous `401` |
+| Login through the browser's CORS path | `200`, `Access-Control-Allow-Origin: http://localhost:5173`; disallowed origin gets no header |
+| nginx responses | Security headers and a single `Cache-Control` on `/`, assets, and deep links |
+
+Two real defects were found and fixed by running the stack, which static checks
+had missed: nginx was emitting **no security headers at all** (and two conflicting
+`Cache-Control` headers), because nginx discards server-level `add_header`
+inside a location that declares its own; and the demo seed created an
+**acknowledged alert whose acknowledgement preceded its creation**, producing a
+negative median acknowledgement time in the analytics KPI. Both now have
+regression tests.
 
 ### What the stack contains
 
@@ -247,7 +269,11 @@ validation checks syntax, cross-references, and file paths — see
 |---|---|---|---|
 | `db` | `postgres:16-alpine` | 5432 | `pg_isready` |
 | `backend` | built from `backend/Dockerfile` (python:3.12-slim, non-root) | 8000 | `curl /health` (does a real `SELECT 1`) |
-| `frontend` | built from `frontend/Dockerfile` (Node build → nginx 1.27) | 5173 → 80 | `wget --spider /` |
+| `frontend` | built from `frontend/Dockerfile` (Node build → nginx 1.27) | 5173 → 80 | `wget --spider 127.0.0.1` |
+
+The frontend healthcheck probes `127.0.0.1` rather than `localhost`: inside that
+container `localhost` resolves to IPv6 `::1` first while nginx listens on IPv4,
+and the resulting "connection refused" held the container permanently unhealthy.
 
 `backend` waits for `db` to be **healthy**, and `frontend` waits for `backend` to
 be **healthy**, via `depends_on: condition: service_healthy`. Data lives in the
@@ -297,14 +323,23 @@ docker compose down -v             # stop and delete the database
 
 ## Verification tools
 
-Docker and nginx are not installed here, so a few checks run offline. They are
-honest about their limits and exit non-zero on failure.
+These checks run offline and are honest about their limits; each exits non-zero
+on failure. They are a **fast pre-flight**, not a substitute for running the
+stack — and they are no longer the only evidence, since the stack itself has now
+been built, started, and exercised (see [Docker](#docker)).
 
 ```powershell
 .\.venv\Scripts\python.exe tools\validate_analytics_sql.py    # SQL names real tables/columns
-.\.venv\Scripts\python.exe tools\validate_nginx.py            # nginx.conf structure
+.\.venv\Scripts\python.exe tools\validate_nginx.py            # nginx.conf structure + add_header inheritance
 node tools\validate-compose-real.js                          # compose + Dockerfile paths
 ```
+
+The nginx validator specifically models nginx's `add_header` inheritance rule:
+a security header set at server level is dropped inside any location that
+declares its own, so the validator requires the headers to live in
+`frontend/security-headers.conf` and be `include`d from every content-serving
+location. That class of bug was previously invisible to static checks and only
+showed up once the container was running.
 
 The Compose validator needs a YAML parser. If `js-yaml` is not in the project, it
 can be run against a temporary install without adding a dependency:
@@ -327,7 +362,8 @@ $env:NODE_PATH = "$env:TEMP\somewhere\node_modules"; node tools\validate-compose
 | Port `8000` / `5432` / `5173` already in use | another service holds the port | Change the left-hand side of the mapping in `docker-compose.yml`, or stop the other process |
 | Backend container starts before the database is ready | missing healthcheck ordering | Already handled: `depends_on` uses `condition: service_healthy` |
 | Frontend loads but every request fails | API URL compiled in at build time | Rebuild with the correct `VITE_API_BASE_URL`, then hard-refresh the browser |
-| `docker: command not found` | Docker Desktop is not installed | Install it (see Prerequisites), then reboot |
+| `Docker Desktop is unable to start` | the WSL2 backend has no distro/kernel | Run `wsl --install`, or `wsl --update`, then restart Docker Desktop |
+| Frontend container stuck at `health: starting` | nginx probed over IPv6 `localhost` while listening on IPv4 | Healthcheck probes `127.0.0.1` (already fixed in the Dockerfile and Compose) |
 | Stale app after a redeploy | browser cached `index.html` | `nginx.conf` already sends `no-cache` for it; hard-refresh once |
 
 ---
@@ -397,18 +433,20 @@ The distinction is enforced in code and covered by tests, not just documented.
 
 - **No AI model is trained.** The three problems are designed, not solved. There
   are no accuracy, precision, or recall numbers to report, and none are invented.
-- **Docker is not installed here**, so the Compose stack has never actually run.
-  It is configured and statically validated only.
-- **PostgreSQL has never been used.** All database work is verified on SQLite.
-  PostgreSQL-specific behaviour (types, concurrency, `ON DELETE` semantics) is
-  therefore **not** verified.
-- **The analytics views have never been executed.** Their table and column names
-  are checked against the models, and the KPI arithmetic is unit-tested, but no
-  view has been run against real data.
+- **PostgreSQL is verified for schema, seeding, and queries — not for load.**
+  Migrations, the 20 tables, the analytics views, and the API were all exercised
+  against a real `postgres:16-alpine` container. What has **not** been tested is
+  behaviour under concurrency, contention, or failover.
+- **The analytics views have only been run over demo data.** All 8 views execute
+  and return rows against a seeded database. They have never been run at a scale
+  where query plans or indexes would matter.
 - **No `.pbix` file exists.** Power BI reports cannot be generated without the
   desktop application. CSV exports are produced for it instead.
-- **The frontend has not been run against a live backend.** Both halves build and
-  pass their own tests, but the first end-to-end screen pass is still outstanding.
+- **The frontend has been run against the live backend over HTTP**, not yet
+  driven through a real browser in this environment. Login, scoped data,
+  navigation endpoints, CORS, and API error paths were exercised with real HTTP
+  requests; the visual pass is still a manual step (see
+  [Demo walkthrough](#demo-walkthrough)).
 - **WebSocket / real-time updates are not implemented.** The alert list is
   fetched, not pushed.
 - **The seed script is development-only** and refuses to run when

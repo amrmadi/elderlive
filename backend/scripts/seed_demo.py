@@ -392,6 +392,11 @@ def seed_activity_and_alerts(
         message="Simulated alert used to demonstrate the alerts page.",
         occurrence_count=1,
     )
+    # An acknowledged alert must be created *before* it is acknowledged.
+    # Leaving created_at to its column default would stamp it at flush time,
+    # which is later than the `now` captured above, producing a negative
+    # acknowledgement latency in the data. Set it explicitly instead.
+    reminder_created_at = now - timedelta(minutes=15)
     reminder_alert = Alert(
         elderly_profile_id=profiles["george"].id,
         alert_type=AlertType.MISSED_MEDICATION.value,
@@ -400,6 +405,7 @@ def seed_activity_and_alerts(
         title="Missed medication (demo)",
         message="Simulated alert used to demonstrate acknowledgement.",
         occurrence_count=1,
+        created_at=reminder_created_at,
         acknowledged_at=now,
         acknowledged_by_user_id=users["caregiver_b"].id,
     )

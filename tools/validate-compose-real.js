@@ -145,5 +145,8 @@ if (errors.length) {
   process.exit(1)
 }
 console.log('STATIC COMPOSE VALIDATION: PASS')
-console.log('NOTE: structural + syntax check only. `docker compose config`,')
-console.log('      `build` and `up` have NOT been run: Docker is not installed here.')
+console.log('NOTE: structural + syntax check only — a fast pre-flight, not proof.')
+console.log('      The stronger check has been done separately: `docker compose')
+console.log('      config`, `build` and `up` were run, all three services reached')
+console.log('      healthy, and migrations + analytics SQL were applied to the real')
+console.log('      PostgreSQL container. See the Docker section of the README.')

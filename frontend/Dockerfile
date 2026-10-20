@@ -46,6 +46,12 @@ FROM nginx:1.27-alpine AS runtime
 # Our server configuration replaces the default nginx one.
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
+# Security headers live in their own file because nginx does not merge
+# `add_header` across levels; the server config `include`s this from every
+# location block. It must sit next to default.conf, which is where the
+# `include` directive looks for it.
+COPY security-headers.conf /etc/nginx/conf.d/security-headers.conf
+
 # The compiled application from stage 1. Nothing from stage 1's node_modules
 # or source tree is carried over.
 COPY --from=build /app/dist /usr/share/nginx/html
@@ -53,7 +59,10 @@ COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
 
 # `wget` ships with the alpine image, so no extra package is needed here.
+# 127.0.0.1 is used rather than `localhost`: inside this container `localhost`
+# resolves to IPv6 ::1 first, while nginx listens on IPv4, and the resulting
+# "connection refused" would hold the container permanently unhealthy.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=5 \
-    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

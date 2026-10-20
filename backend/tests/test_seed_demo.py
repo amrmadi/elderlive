@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.core.security import verify_password
+from backend.app.models.alerts import Alert
 from backend.app.models.identity import User
 from backend.app.schemas.auth import UserLogin
 from backend.scripts.seed_demo import (
@@ -164,3 +165,49 @@ def test_seeding_twice_after_reset_creates_no_duplicate_users(db_session: Sessio
     ).all()
 
     assert duplicates == [], f"duplicate users after re-seed: {duplicates}"
+
+
+# ---------------------------------------------------------------------------
+# Seeded timestamps must be physically sensible
+# ---------------------------------------------------------------------------
+
+
+def test_acknowledged_alert_is_acknowledged_after_it_was_created(
+    db_session: Session,
+) -> None:
+    """An alert cannot be acknowledged before it exists.
+
+    While verifying the deployment against a real PostgreSQL container this
+    seed data produced a *negative* median acknowledgement time (~ -0.002 s).
+    `created_at` was left to its column default, which is stamped at flush time,
+    while `acknowledged_at` was set from a `now` captured earlier in the script.
+    The acknowledgement landed two milliseconds before creation.
+
+    The analytics KPI dutifully reported the negative median, which is how a
+    nonsense value reached the dashboard. Guard the ordering here.
+    """
+    from backend.scripts.seed_demo import (
+        create_profiles,
+        create_users,
+        seed_activity_and_alerts,
+        seed_care,
+    )
+
+    users = create_users(db_session)
+    profiles = create_profiles(db_session, users)
+    seed_care(db_session, users, profiles)
+    seed_activity_and_alerts(db_session, users, profiles)
+    db_session.flush()
+
+    alerts = db_session.execute(select(Alert)).scalars().all()
+    assert alerts, "seed produced no alerts to check"
+
+    acknowledged = [a for a in alerts if a.acknowledged_at is not None]
+    assert acknowledged, "seed produced no acknowledged alert to check"
+
+    for alert in acknowledged:
+        assert alert.created_at is not None
+        assert alert.acknowledged_at >= alert.created_at, (
+            f"alert {alert.id} was acknowledged "
+            f"{alert.created_at - alert.acknowledged_at} before it was created"
+        )

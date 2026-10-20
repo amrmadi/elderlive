@@ -83,13 +83,84 @@ checks = {
     "SPA fallback to index.html": r"try_files\s+\$uri\s+\$uri/\s+/index\.html\s*;",
     "does not cache index.html": r"location\s+=\s+/index\.html",
     "gzip enabled": r"^\s*gzip\s+on\s*;",
-    "clickjacking header": r"X-Frame-Options",
-    "nosniff header": r"X-Content-Type-Options",
     "immutable caching for hashed assets": r"location\s+/assets/",
+    # NOTE: the security-header checks deliberately live in section 4b below.
+    # A plain "does the string X-Frame-Options appear?" check passed while the
+    # running server sent no security headers at all, because nginx discards
+    # server-level add_header inside a location that sets its own. Checking for
+    # presence alone is therefore not a meaningful test.
 }
 for label, pattern in checks.items():
     if not re.search(pattern, no_comments, re.MULTILINE):
         errors.append(f"missing: {label}")
+
+# --- 4b. add_header inheritance -------------------------------------------
+# nginx does NOT merge `add_header` from an enclosing block into a nested block
+# that declares its own. A security header at server level is therefore silently
+# dropped inside any location that sets, say, Cache-Control.
+#
+# This check exists because the plain "is the header present?" checks above
+# passed while the running server sent *no* security headers at all. Verified
+# against nginx 1.27.5: GET /, GET /assets/x.js and GET /deep/route all came
+# back without X-Frame-Options until the headers were moved into an included
+# file and referenced from every location block.
+snippet_path = ROOT / "frontend" / "security-headers.conf"
+snippet = snippet_path.read_text(encoding="utf-8") if snippet_path.exists() else ""
+
+SECURITY_HEADERS = ("X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy")
+
+if snippet_path.exists():
+    for header in SECURITY_HEADERS:
+        if header not in snippet:
+            errors.append(f"security-headers.conf is missing {header}")
+else:
+    errors.append(
+        "frontend/security-headers.conf is missing; the security headers must live "
+        "in an includable file because nginx does not inherit add_header into a "
+        "location that declares its own"
+    )
+
+server_level = re.findall(
+    r"^\s*add_header\s+(X-Content-Type-Options|X-Frame-Options|Referrer-Policy)",
+    no_comments,
+    re.MULTILINE,
+)
+# Any occurrence outside the snippet is in nginx.conf itself, at server level.
+if server_level:
+    errors.append(
+        "security headers are declared at server level in nginx.conf "
+        f"({', '.join(sorted(set(server_level)))}); nginx drops these inside every "
+        "location block that sets its own add_header — use the include instead"
+    )
+
+# Every location block must either include the snippet or be purely structural.
+location_blocks = re.findall(r"location\s+[^{]*\{([^}]*)\}", no_comments)
+for body in location_blocks:
+    if "try_files" not in body and "proxy_pass" not in body:
+        continue
+    if "security-headers.conf" not in body:
+        errors.append(
+            "a location block that serves content does not include "
+            "security-headers.conf, so it will emit no security headers"
+        )
+
+if 'COPY security-headers.conf /etc/nginx/conf.d/security-headers.conf' not in dockerfile:
+    errors.append(
+        "the Dockerfile does not copy security-headers.conf into "
+        "/etc/nginx/conf.d/, where nginx.conf includes it from"
+    )
+
+# --- 4c. Duplicate Cache-Control on one response ---------------------------
+# `expires 1y` also emits Cache-Control. Combining it with an add_header
+# Cache-Control produced two conflicting headers on every asset.
+for body in location_blocks:
+    if re.search(r"^\s*expires\s", body, re.MULTILINE) and re.search(
+        r"add_header\s+Cache-Control", body
+    ):
+        errors.append(
+            "a location block uses both `expires` and `add_header Cache-Control`, "
+            "which emits two conflicting Cache-Control headers"
+        )
 
 # --- 5. Consistency with the Dockerfile and Compose -------------------------
 if "/usr/share/nginx/html" not in conf:
@@ -128,5 +199,6 @@ if errors:
     sys.exit(1)
 
 print("NGINX CONFIG STATIC VALIDATION: PASS")
-print("NOTE: structural check only. `nginx -t` has NOT been run, because nginx is")
-print("      not installed on this machine.")
+print("NOTE: structural check only. `nginx -t` is a stronger check and is run")
+print("      inside the container by `docker compose build frontend`; see the")
+print("      README for the full-stack verification that exercises these headers.")

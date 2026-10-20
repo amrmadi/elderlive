@@ -158,5 +158,6 @@ if errors:
 print()
 print("ANALYTICS SQL REFERENCE CHECK: PASS")
 print("NOTE: this confirms the SQL *names real tables and columns*. It does NOT")
-print("      prove the queries run or return correct numbers - that needs")
-print("      PostgreSQL, which is not available on this machine.")
+print("      prove the queries run. That stronger check has been done separately:")
+print("      all 8 views were created against postgres:16-alpine in the Compose")
+print("      stack and queried successfully. See the Docker section of the README.")

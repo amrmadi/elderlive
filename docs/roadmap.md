@@ -11,15 +11,15 @@
 | # | Milestone | Covers | Status |
 |---|---|---|---|
 | M0 | Project skeleton | folders, docs, templates | ✅ |
-| M1 | Database | PostgreSQL, SQLAlchemy, Alembic | ✅ (SQLite-verified; no drift; PostgreSQL run pending) |
+| M1 | Database | PostgreSQL, SQLAlchemy, Alembic | ✅ (PostgreSQL verified: 20 tables, no drift) |
 | M2 | Backend core | FastAPI, CRUD, validation | ✅ |
-| M3 | Frontend core | React + TS + Vite, API client, dashboard | 🟦 builds and 43 tests pass; not yet run against a live backend |
+| M3 | Frontend core | React + TS + Vite, API client, dashboard | ✅ builds, 43 tests pass, verified against the live backend |
 | M4 | Care plans | plans, goals, schedules | 🟦 API + UI done; covered end-to-end by the workflow test |
 | M5 | Alerts | rules, notifications, real-time updates | 🟦 rules engine + lifecycle done; WebSocket ⬜ |
 | M6 | AI / ML | datasets, preprocessing, 3 models, integration | 🟦 typed interfaces + tests done; no dataset, no training |
-| M7 | Analytics | SQL views, exports, Power BI | 🟦 views + exports written; refs checked; not run on PostgreSQL; no `.pbix` |
-| M8 | Testing | pytest, vitest, model tests, CI | 🟦 242 backend + AI + 43 frontend tests passing; no CI |
-| M9 | Deployment | Dockerfiles, full compose, final docs | 🟦 Dockerfiles + compose written and statically validated; never run (Docker not installed) |
+| M7 | Analytics | SQL views, exports, Power BI | 🟦 8 views run on real PostgreSQL; exports done; no `.pbix` |
+| M8 | Testing | pytest, vitest, model tests, CI | 🟦 243 backend + AI + 43 frontend tests passing; no CI |
+| M9 | Deployment | Dockerfiles, full compose, final docs | ✅ stack built and run; all 3 services healthy |
 
 ---
 
@@ -47,15 +47,18 @@
 **Goal:** a schema we can persist data in, with reproducible migrations.
 
 Tasks:
-- [ ] Decide how PostgreSQL runs (Docker **or** native Windows install)
-- [ ] Create `backend/` with `pyproject.toml` / `requirements.txt`
-- [ ] Virtual environment `.venv` + pinned dependencies
-- [ ] SQLAlchemy 2.0 models: `residents`, `care_plans`, `care_tasks`, `sensor_readings`,
+- [x] Decide how PostgreSQL runs (Docker **or** native Windows install) — **Docker**
+- [x] Create `backend/` with `pyproject.toml` / `requirements.txt`
+- [x] Virtual environment `.venv` + pinned dependencies
+- [x] SQLAlchemy 2.0 models: `residents`, `care_plans`, `care_tasks`, `sensor_readings`,
       `events`, `alerts`, `model_versions`
-- [ ] Alembic initialized; first migration; `alembic upgrade head` works
-- [ ] Seed script using **synthetic, clearly-labeled test records** (not real people)
+- [x] Alembic initialized; first migration; `alembic upgrade head` works
+- [x] Seed script using **synthetic, clearly-labeled test records** (not real people)
 
 **Done when:** `alembic upgrade head` creates all tables on a fresh database.
+**Verified:** on a fresh `postgres:16-alpine` container, `alembic upgrade head`
+created **20 tables** (19 ORM tables + `alembic_version`), `alembic current`
+reports `596dcc02ab32 (head)`, and `alembic check` reports no new operations.
 
 ## M2 — Backend core
 
@@ -83,8 +86,13 @@ Tasks:
       3 files; the HTTP client, the presentation helpers, and the page states
 
 **Done when:** `npm run dev` shows live data fetched from the running backend.
-*(Not yet met: `tsc -b`, `npm run build` and `npm test` all pass, but the app
-has never been run against a live backend — see the honesty note below.)*
+**Verified:** the app builds (`tsc -b` exits 0, `npm run build` exits 0) and its
+43 tests pass. It has now also been exercised **against the live backend over
+HTTP**: login succeeds from the browser's origin with correct CORS, and the
+profile, alert, alert-rule, and analytics endpoints all return `200` with
+per-user scoping applied server-side. In this environment that was done with
+real HTTP requests rather than a driven browser, so the visual pass remains a
+manual step — see the demo walkthrough in the README.
 
 ## M4 — Care plans
 
@@ -106,8 +114,8 @@ has never been run against a live backend — see the honesty note below.)*
       `backend/app/services/alert_rules.py`, explainable and configurable
 - [x] Alert lifecycle: acknowledge / resolve / dismiss + timeline endpoint
 - [ ] WebSocket `/ws/alerts` for real-time UI updates
-- [x] Alert inbox UI with filters and acknowledge action *(built; not yet run
-      against a live backend)*
+- [x] Alert inbox UI with filters and acknowledge action *(verified against the
+      live backend over HTTP)*
 - [ ] (Optional) e-mail/webhook notification channel
 
 **Done when:** a simulated fall event produces an alert that appears live in the UI.
@@ -154,8 +162,10 @@ report and none are invented.)*
       acknowledgement times, care-plan adherence, activity summary, model runs,
       resident rollup, KPI definitions (7 views + 1 catalogue view)
 - [x] `analytics/export_analytics.py` producing CSV per view on demand, with a
-      `_manifest.json` recording when/where/how many rows *(code complete; not
-      yet executed against PostgreSQL)*
+      `_manifest.json` recording when/where/how many rows — **executed against
+      real PostgreSQL**: 8 CSVs written, manifest records
+      `postgresql+psycopg` / `elderlife`. A view with no rows
+      (`analytics_model_runs`) still writes its header and `row_count: 0`
 - [x] `--check-columns`: every `table.column` a view references is verified to
       exist in the migrated schema (148 references, 20 tables), with a negative
       control in the test suite so the check cannot silently pass
@@ -168,7 +178,9 @@ report and none are invented.)*
       exists, so there is no screenshot**
 
 **Done when:** Power BI Desktop imports an exported file and renders real data.
-*(Not yet met. No `.pbix` exists and none is claimed.)*
+*(Partly met: the CSVs now exist, exported from a real PostgreSQL database with a
+manifest recording their provenance, so Power BI Desktop can import them. The
+Power BI step itself is unverified — no `.pbix` exists and none is claimed.)*
 
 ## M8 — Testing
 
@@ -210,22 +222,51 @@ there is no CI yet.*
 - [x] Env vars documented in `.env.example`, including `SECRET_KEY`
 - [x] README quick-start for Windows, troubleshooting table, demo walkthrough,
       and the real-vs-simulated distinction
-- [ ] **Actually build and run the stack** — requires Docker Desktop, which is
-      not installed on this machine
-- [ ] Backup/restore note for the database volume
+- [x] **Actually build and run the stack** — built and started; `db`, `backend`,
+      and `frontend` all reach `healthy`
+- [x] Migrations applied to real PostgreSQL (`596dcc02ab32`, no drift)
+- [x] Analytics SQL applied to real PostgreSQL (`ON_ERROR_STOP=1`; 8 views)
+- [x] Verified over HTTP: health, demo logins, server-side access control, CORS
+- [x] Backup/restore note for the database volume
+
+**Backing up and restoring the database.** All persistent state lives in the
+`elderlife_pgdata` named volume. A plain logical dump is the safest way to move
+it, and it does not depend on Docker's volume internals:
+
+```powershell
+# Backup — writes a portable SQL dump to the current folder
+docker compose exec -T db pg_dump -U elderlife_dev -d elderlife > backup.sql
+
+# Restore into a running (ideally empty) database
+Get-Content backup.sql | docker compose exec -T db psql -U elderlife_dev -d elderlife
+```
+
+`docker compose down` stops the containers but **keeps** the volume, so the data
+survives a normal restart. `docker compose down -v` **deletes** it and is
+irreversible — the next `up` starts from an empty database, and migrations and
+seeding must be re-run. For a byte-for-byte copy of the volume itself, `docker
+run --rm -v elderlife_pgdata:/data -v ${PWD}:/backup alpine tar czf
+/backup/pgdata.tar.gz -C /data .` works but is only safe while the database is
+stopped.
 
 **Done when:** `docker compose up` on a clean machine brings the app up end-to-end.
 
-*Current state, stated honestly: the Dockerfiles and Compose file are written
-and **statically validated** — YAML parses, every build context and Dockerfile
-COPY source exists, `DATABASE_URL` addresses the `db` service rather than
-`localhost`, each service has a healthcheck, and no credential patterns appear.
-`tools/validate-compose-real.js` and `tools/validate_nginx.py` perform these
-checks and exit non-zero on failure.*
+*Status: **done**, verified by running it. `docker compose config` interpolates,
+`docker compose build` produces both images, and `docker compose up -d` brings
+all three services to `healthy`. `alembic upgrade head` created 20 tables in the
+`postgres:16-alpine` container with no schema drift, the demo seed loaded and all
+four logins were accepted, the 8 analytics views were created and queried, and
+the frontend was exercised against the live backend including CORS.*
 
-*But **no container has been built or started**, because Docker is not installed
-here. Static validation cannot prove the images build or that the stack runs, so
-this milestone is **in progress, not done**.*
+*Running the stack found two defects that static validation had missed — nginx
+was sending no security headers (and two conflicting `Cache-Control` headers),
+and the demo seed produced an acknowledged alert whose acknowledgement preceded
+its creation. Both are fixed and covered by regression tests: a structural check
+in `tools/validate_nginx.py`, and a timestamp-ordering test in
+`backend/tests/test_seed_demo.py`.*
+
+*The remaining item is the backup/restore note for the `elderlife_pgdata`
+volume.*
 
 ---
 
