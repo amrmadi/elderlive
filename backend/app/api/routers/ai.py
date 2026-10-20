@@ -30,6 +30,27 @@ from backend.app.schemas.ai import PredictorListResponse, PredictorStatus
 router = APIRouter(tags=["AI"])
 
 
+def _capability_check_sample(name: str) -> object:
+    """A small, obviously synthetic input used to prove a predictor can run.
+
+    This is **not** a measurement of anybody. It exists only so that the
+    `/check` endpoint exercises the real inference path instead of passing a
+    placeholder. The predictor marks its output `is_simulated`, so the result
+    can never be mistaken for a resident's data.
+
+    For fall detection the sample is plain accelerometer triples in g: a person
+    standing still (magnitude ~1 g, gravity only). It is built with a list so
+    this module does not need numpy to serve a status endpoint.
+    """
+    if name == "fall_detection":
+        # 500 samples (2.5 s at 200 Hz) of a stationary sensor: (x, y, z) in g.
+        return [[0.0, 0.0, 1.0] for _ in range(500)]
+
+    # No other predictor has an input contract yet; an empty vector is enough to
+    # demonstrate that the call fails for the honest reason (no model).
+    return []
+
+
 @router.get(
     "/ai/predictors",
     response_model=PredictorListResponse,
@@ -98,12 +119,14 @@ def get_ai_predictor(
     "/ai/predictors/{name}/check",
     summary="Confirm whether a predictor can run",
     description=(
-        "Asks a predictor to run and reports the outcome.\n\n"
-        "This exists so the 'not available yet' behaviour is **verifiable** "
-        "rather than merely documented: while no model is trained it always "
-        "returns **503** with code `MODEL_NOT_LOADED`.\n\n"
-        "It never returns a fabricated prediction. When a real model exists, "
-        "this endpoint will return that model's result instead.\n\n"
+        "Asks a predictor to actually run and reports the outcome.\n\n"
+        "For a predictor with no model this always returns **503** with code "
+        "`MODEL_NOT_LOADED`, which makes the 'not available yet' behaviour "
+        "verifiable rather than merely documented.\n\n"
+        "When a model **is** loaded, this runs it against a small, clearly "
+        "synthetic sample and returns the result. That result is flagged "
+        "`is_simulated: true`, because a capability check must never look like a "
+        "reading taken from a resident.\n\n"
         "**Access:** any authenticated user."
     ),
     responses={
@@ -123,9 +146,7 @@ def check_ai_predictor(name: str, _: User = Depends(get_current_user)) -> dict:
 
     predictor = get_predictor(name)
     try:
-        # No features are passed because there is nothing to infer from yet.
-        # A real predictor would take a typed feature vector here.
-        result = predictor.predict(features=None)
+        result = predictor.predict(features=_capability_check_sample(name))
     except ModelNotLoadedError as exc:
         raise ServiceUnavailableError(
             str(exc),
@@ -133,6 +154,4 @@ def check_ai_predictor(name: str, _: User = Depends(get_current_user)) -> dict:
             details={"predictor": name, "reason": exc.reason},
         ) from exc
 
-    # Unreachable while no model exists. Present so the endpoint behaves
-    # correctly the moment a real predictor is registered.
-    return result.as_dict()  # pragma: no cover
+    return result.as_dict()

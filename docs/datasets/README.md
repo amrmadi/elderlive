@@ -1,7 +1,8 @@
 # Dataset documentation
 
 > Rule: **document a dataset here BEFORE downloading or using it.** Nothing in `data/` is
-> committed to Git. No dataset has been downloaded yet.
+> committed to Git. One dataset (SisFall) has been downloaded and used for training; the
+> others have not.
 
 ## The template
 
@@ -49,9 +50,10 @@ Unknown information is written as `To verify` — never guessed.
 
 | # | Dataset | Used for | Page | Status |
 |---|---|---|---|---|
-| 1 | UP-Fall Detection Dataset | fall detection | [up-fall.md](up-fall.md) | not downloaded |
+| 1 | **SisFall** | fall detection | [sisfall.md](sisfall.md) | ✅ **downloaded, preprocessed, trained** |
 | 2 | CASAS Smart Home | behavioral anomaly detection | [casas.md](casas.md) | not downloaded |
 | 3 | UCI HAR (Smartphones) | activity recognition | [uci-har.md](uci-har.md) | not downloaded |
+| 4 | UP-Fall Detection Dataset | *(superseded by SisFall)* | [up-fall.md](up-fall.md) | not used — ~812 GB |
 
 ## Rules for working with datasets
 

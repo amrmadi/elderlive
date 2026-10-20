@@ -16,7 +16,7 @@
 | M3 | Frontend core | React + TS + Vite, API client, dashboard | ✅ builds, 43 tests pass, verified against the live backend |
 | M4 | Care plans | plans, goals, schedules | 🟦 API + UI done; covered end-to-end by the workflow test |
 | M5 | Alerts | rules, notifications, real-time updates | 🟦 rules engine + lifecycle done; WebSocket ⬜ |
-| M6 | AI / ML | datasets, preprocessing, 3 models, integration | 🟦 typed interfaces + tests done; no dataset, no training |
+| M6 | AI / ML | datasets, preprocessing, 3 models, integration | 🟨 fall detection trained (F1 0.80); activity + anomaly still interfaces only |
 | M7 | Analytics | SQL views, exports, Power BI | 🟦 8 views run on real PostgreSQL; exports done; no `.pbix` |
 | M8 | Testing | pytest, vitest, model tests, CI | 🟦 243 backend + AI + 43 frontend tests passing; no CI |
 | M9 | Deployment | Dockerfiles, full compose, final docs | ✅ stack built and run; all 3 services healthy |
@@ -125,34 +125,43 @@ manual step — see the demo walkthrough in the README.
 
 **Goal:** three working, honest models wired into the API.
 
-- [ ] Document **all three datasets** in `docs/datasets/` *before* downloading
-- [ ] Download datasets into `data/raw/` (manually, not committed)
-- [ ] Preprocessing scripts → `data/processed/`
-- [ ] **Fall detection** — baseline model (e.g. RandomForest on windows), evaluation report
+- [x] Document **SisFall** in `docs/datasets/` *before* downloading —
+      [`sisfall.md`](datasets/sisfall.md), every field verified against the archive
+- [ ] Document the other two (CASAS, UCI HAR) before downloading — still `To verify`
+- [x] Download the fall-detection dataset into `data/raw/` (manually, not committed)
+- [x] Preprocessing script → `ai/fall_detection/preprocess.py` (outputs git-ignored)
+- [x] **Fall detection** — RandomForest on windows, with a measured evaluation report
+      (**F1 0.80** on 6 unseen adult subjects; see
+      [`ai/fall_detection/README.md`](../ai/fall_detection/README.md))
 - [ ] **Activity recognition** — baseline model on UCI HAR (then optional deep model)
 - [ ] **Behavioral anomaly detection** — per-resident routine baseline (e.g. IsolationForest /
       statistics on activity sequences from CASAS)
-- [ ] Model registry: version, metrics, training date stored in `model_versions`
+- [x] Model version, metrics and training date recorded in the artefact metadata and served
+      by the API (`model_versions` DB table remains for the activity/anomaly models)
 - [x] Typed inference interfaces — `ai/base.py` (`FallDetectionResult`,
       `ActivityResult`, `AnomalyResult`, `ModelInfo`, `Predictor` protocol,
       `ModelNotLoadedError`) and `ai/registry.py`
-- [x] Expose `/ai/*` endpoints; return `503 MODEL_NOT_LOADED` until models exist
-      (`GET /ai/predictors`, `GET /ai/predictors/{name}`,
+- [x] Expose `/ai/*` endpoints; return `503 MODEL_NOT_LOADED` while a predictor has no
+      model (`GET /ai/predictors`, `GET /ai/predictors/{name}`,
       `POST /ai/predictors/{name}/check`)
+- [x] Serving predictor that loads the trained model — `ai/fall_detection/predictor.py`
 - [x] Unit tests that run without a database or dataset —
-      `ai/tests/test_interfaces.py` (**25 tests**) and
-      `backend/tests/test_ai_api.py` (**13 tests**)
+      `ai/tests/test_interfaces.py`, `ai/tests/test_preprocess.py`,
+      `ai/tests/test_fall_predictor.py` and `backend/tests/test_ai_api.py`
 
-**Honesty rule enforced in code:** `ModelInfo.metrics` is always `None` and every
-predictor reports `is_ready: false` until a real model is loaded. Calling
-`predict()` raises `ModelNotLoadedError` rather than returning a guess. Simulated
-or imported-dataset input is flagged `is_simulated=True`, so demo data cannot be
-presented as a real measurement.
+**Honesty rule enforced in code:** a predictor with no model reports `metrics = None`,
+`is_ready = False` and raises `ModelNotLoadedError` rather than returning a guess. Once a
+model is trained, `metrics` carries only the values actually measured. Simulated or
+imported-dataset input is flagged `is_simulated=True`, so public research data and demo data
+can never be presented as a live measurement of a resident.
 
 **Done when:** each model beats (or clearly documents) its baseline on a held-out test set,
 and the metrics are written down — including failures.
-*(Not met: no dataset downloaded, no model trained, so there are no metrics to
-report and none are invented.)*
+*(Partially met: fall detection is trained and evaluated on subject-wise held-out data, and
+its **worse** cross-population result on elderly subjects is published rather than hidden.
+Activity recognition and anomaly detection are still untrained, so for them no metric is
+reported and none is invented. Fall detection uses SisFall instead of the originally-planned
+UP-Fall, whose full distribution is ~812 GB.)*
 
 ## M7 — Analytics
 

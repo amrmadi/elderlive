@@ -2,8 +2,13 @@
 
 > **Current status: the application runs, is tested, and has been deployed with
 > Docker Compose.** Backend, frontend, database schema, alert rules, analytics
-> SQL, and the AI *interfaces* all exist and are verified. **No AI model has been
-> trained**, so no prediction is real — see
+> SQL, and a **trained fall-detection model** all exist and are verified. The
+> fall-detection model was trained on the public **SisFall** dataset and its
+> measured results are published in
+> [`ai/fall_detection/README.md`](ai/fall_detection/README.md); activity
+> recognition and behavioural analysis remain designed-but-untrained, and the API
+> says so rather than guessing. The trained model file is **not committed**, so a
+> fresh clone reports `is_ready: false` until it is retrained — see
 > [Real predictions vs simulated events](#real-predictions-vs-simulated-events).
 > The container stack has been built and run on this machine: PostgreSQL 16,
 > the API, and the nginx frontend all come up healthy, migrations apply to real
@@ -21,7 +26,10 @@ well-being of elderly people at home. It aims to:
 - and produce **analytics** that can be opened in Power BI.
 
 The care-management half is built and works on real stored data. The AI half is
-**designed but not trained**; the API says so out loud rather than guessing.
+partly built: **fall detection is trained and evaluated** on the public SisFall
+dataset, while activity recognition and behavioural analysis remain designed but
+untrained. Where a capability is not available, the API says so out loud rather
+than guessing.
 
 ---
 
@@ -30,13 +38,13 @@ The care-management half is built and works on real stored data. The AI half is
 | Area | State | How it is verified |
 |---|---|---|
 | Database schema | ✅ 19 application tables (+ `alembic_version`) | `alembic upgrade head` creates them; column-by-column comparison against the models shows **no drift** |
-| Backend API (FastAPI) | ✅ auth, profiles, care plans, check-ins, events, alerts, analytics, AI capability routes | **242 automated tests pass** |
+| Backend API (FastAPI) | ✅ auth, profiles, care plans, check-ins, events, alerts, analytics, AI capability routes | **289 automated tests pass** |
 | Access control | ✅ enforced **server-side** | Unassigned caregivers get `403` on profiles, care plans, check-ins, alerts, and alert acknowledgement |
 | Alert lifecycle | ✅ create → acknowledge → resolve, with timestamps | Covered by tests, including double-acknowledge rejection |
 | Frontend (React + TS) | ✅ builds and is unit-tested | `tsc -b` exits 0, `npm run build` exits 0, **43 tests pass** |
 | Analytics SQL | ✅ 8 views; names real tables/columns | **148 column references** checked against the models |
-| AI **interfaces** | ✅ typed, tested | **25 interface tests**; every predictor reports `is_ready: false` |
-| AI **models / predictions** | ❌ **do not exist** | `/ai/predictors/*/check` returns `503 MODEL_NOT_LOADED` |
+| AI **interfaces** | ✅ typed, tested | `ai/tests/` covers the result types, the honesty rules and the registry |
+| AI **models / predictions** | 🟨 **fall detection trained**; activity + anomaly not | Fall detection: **F1 0.80** on 6 unseen adult subjects (SisFall). Others return `503 MODEL_NOT_LOADED` |
 | Docker Compose stack | ✅ **built and run; all three services healthy** | PostgreSQL 16, API, nginx; see [Docker](#docker-optional) |
 | Migrations on **real PostgreSQL** | ✅ applied, **no drift** | `alembic upgrade head` → `596dcc02ab32`; `alembic check` → no new operations |
 | Analytics SQL on real PostgreSQL | ✅ **all 8 views created and queried** | Applied with `ON_ERROR_STOP=1`; views return rows from seeded data |
@@ -74,9 +82,9 @@ ElderLife-AI/
 │   └── tests/                #   backend test suite
 ├── ai/                       # Machine-learning code
 │   ├── base.py               #   typed inference interfaces (result types)
-│   ├── registry.py           #   predictor registry (all unavailable today)
-│   ├── tests/                #   interface tests, no dataset needed
-│   ├── fall_detection/       #   fall detection (planned: SisFall)
+│   ├── registry.py           #   predictor registry (fall detection is real)
+│   ├── tests/                #   interface + preprocessing + predictor tests
+│   ├── fall_detection/       #   ✅ trained on SisFall (preprocess/train/predictor)
 │   ├── activity_recognition/ #   activity classification (planned: UCI HAR)
 │   └── behavioral_analysis/  #   routine / anomaly detection (planned: CASAS)
 ├── data/                     # Datasets (mostly git-ignored)
@@ -215,7 +223,25 @@ All demo rows are marked `[DEMO]`, and demo activity events use
 > reserved TLD that the API's email validator rejects, so accounts there could be
 > created but never log in. A regression test now guards this.
 
-### 3. Frontend
+### 3. Train the fall-detection model (optional, but needed for a live AI feature)
+
+The trained model file is **not committed** (it is ~87 MB and git-ignored), so a
+fresh clone reports fall detection as `is_ready: false`. To train it, first
+download the dataset — it is not committed either; the exact source, size and
+checksum are in [`docs/datasets/sisfall.md`](docs/datasets/sisfall.md):
+
+```powershell
+# after placing the archive at data\raw\SisFall_dataset.zip
+.\.venv\Scripts\python.exe -m ai.fall_detection.train
+```
+
+This prints the measured precision/recall/F1 for the fall class, including the
+worse elderly result, and writes the artefacts to `ai/models/fall_detection/`
+(git-ignored). Training took a few minutes on this machine. Skipping this step is
+fine — everything else works, and the AI endpoints will simply report the model
+as unavailable rather than inventing a prediction.
+
+### 4. Frontend
 
 ```powershell
 cd frontend
@@ -331,6 +357,7 @@ been built, started, and exercised (see [Docker](#docker)).
 ```powershell
 .\.venv\Scripts\python.exe tools\validate_analytics_sql.py    # SQL names real tables/columns
 .\.venv\Scripts\python.exe tools\validate_nginx.py            # nginx.conf structure + add_header inheritance
+.\.venv\Scripts\python.exe tools\verify_no_model_path.py      # AI predictor is honest with and without a model
 node tools\validate-compose-real.js                          # compose + Dockerfile paths
 ```
 
@@ -392,8 +419,14 @@ A guided tour showing the whole system, using only synthetic data.
    curl -H "Authorization: Bearer <token>" http://localhost:8000/api/v1/ai/predictors
    ```
 
-   Every entry says `is_ready: false`. Asking one to run returns `503` with code
-   `MODEL_NOT_LOADED` — it does **not** invent a prediction.
+   Each entry reports its real state. Fall detection is `is_ready: true` **only if
+   the trained model file is present** (retrain with
+   `python -m ai.fall_detection.train`; the file is git-ignored). Activity
+   recognition and anomaly detection always report `is_ready: false`. Asking a
+   predictor with no model to run returns `503` with code `MODEL_NOT_LOADED` — it
+   does **not** invent a prediction. Even when fall detection *is* ready, the
+   `/check` response is flagged `is_simulated: true`, because a capability check
+   must never look like a reading taken from a resident.
 8. **Analytics (PostgreSQL + Docker only).** Apply `analytics/sql/*.sql` and run
    `analytics/export_analytics.py` to produce CSVs for Power BI.
 
@@ -414,16 +447,20 @@ plainly.
 - A **data gap is never treated as an emergency.** Missing check-ins or silence
   are capped at `low` severity; the system does not guess that silence means harm.
 
-**Real model predictions — these do not exist yet.**
+**Real model predictions — one now exists.**
 
-- **No model has been trained. No dataset has been downloaded.**
-- `ai/` currently contains typed *interfaces* (`ai/base.py`), a registry
-  (`ai/registry.py`), and tests. Every predictor reports `is_ready: false` and
-  `metrics: null` — never placeholder numbers.
-- `POST /api/v1/ai/predictors/{name}/check` returns **`503 MODEL_NOT_LOADED`**.
-- When a model is trained, the predictor is swapped in behind the same interface.
-  Until then, the system says "not available" rather than producing a
-  plausible-looking answer.
+- **A fall-detection model has been trained** on the public **SisFall** dataset.
+  The measured results — including the worse cross-population result on elderly
+  subjects — are in [`ai/fall_detection/README.md`](ai/fall_detection/README.md).
+- The trained model file is **git-ignored**, so it is not in a fresh clone. Until
+  it is retrained (`python -m ai.fall_detection.train`), the predictor reports
+  `is_ready: false` and `metrics: null` — never placeholder numbers.
+- **Activity recognition and behavioural analysis have no model.** Their
+  predictors report `is_ready: false`, and
+  `POST /api/v1/ai/predictors/{name}/check` returns **`503 MODEL_NOT_LOADED`**.
+- When a predictor has no model it says "not available" rather than producing a
+  plausible-looking answer. When it does have one, the result is flagged as
+  research data (`is_simulated: true`), never as a live reading of a resident.
 
 The distinction is enforced in code and covered by tests, not just documented.
 
@@ -431,8 +468,12 @@ The distinction is enforced in code and covered by tests, not just documented.
 
 ## Known limitations
 
-- **No AI model is trained.** The three problems are designed, not solved. There
-  are no accuracy, precision, or recall numbers to report, and none are invented.
+- **Only one of the three AI problems has a model.** Fall detection is trained and
+  its honest results are reported (`ai/fall_detection/README.md`). Activity
+  recognition and behavioural analysis are designed but untrained, so for them
+  there are no accuracy, precision, or recall numbers to report, and none are
+  invented. The fall model's elderly result rests on a **single subject** (only
+  one elderly SisFall volunteer simulated falls) and is labelled as such.
 - **PostgreSQL is verified for schema, seeding, and queries — not for load.**
   Migrations, the 20 tables, the analytics views, and the API were all exercised
   against a real `postgres:16-alpine` container. What has **not** been tested is
@@ -460,10 +501,21 @@ The distinction is enforced in code and covered by tests, not just documented.
 
 Three public research datasets are planned: **SisFall** (fall detection),
 **UCI HAR** (activity recognition), and **CASAS** (behavioural analysis).
-**None have been downloaded**, and no model has been trained.
 
-Public research data is kept strictly separate from application user records.
-Each dataset will be documented in [`docs/datasets/`](docs/datasets/README.md)
+**SisFall has been downloaded** (232,407,821 bytes, integrity verified) and used
+to train the fall-detection model. It is documented in
+[`docs/datasets/sisfall.md`](docs/datasets/sisfall.md). The other two have **not**
+been downloaded, and no model uses them.
+
+The original plan named **UP-Fall** for fall detection. Its full distribution is
+~812 GB, which is not practical to download or process here, so **SisFall** is
+used instead; [`docs/datasets/up-fall.md`](docs/datasets/up-fall.md) is retained as
+a record of that decision.
+
+Public research data is kept strictly separate from application user records — it
+is git-ignored, and a model result derived from it is always flagged
+`is_simulated: true` so it can never be presented as a resident's own reading.
+Each dataset is documented in [`docs/datasets/`](docs/datasets/README.md)
 (source URL, license, format, labels, preprocessing, limitations) *before* use.
 
 ---

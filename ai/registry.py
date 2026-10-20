@@ -1,17 +1,21 @@
 """Registry of the AI predictors the backend can ask for.
 
-Right now **every** predictor in this registry is a placeholder that has no
-model behind it. Their only job is to report that honestly:
+Three problems are declared. One of them — fall detection — now has a real,
+trained model behind it, and its predictor reports that honestly:
 
     >>> from ai.registry import get_predictor
     >>> predictor = get_predictor("fall_detection")
-    >>> predictor.is_ready()
-    False
+    >>> predictor.is_ready()   # True only if the trained model file is present
+    True
 
-The value of writing them now is that the backend, the API schema, and the
-tests can all be built against the real contract. When Phase 5 produces a
-trained model, `UnavailablePredictor` is replaced by a real class that loads it
-— and nothing else has to change.
+The other two still have no model. They are `UnavailablePredictor` instances,
+whose only job is to say so rather than to return a guess.
+
+Two things the registry guarantees:
+
+* a name that is not declared fails loudly with `KeyError`;
+* a predictor with no model raises `ModelNotLoadedError`, which the API turns
+  into an honest HTTP 503 instead of a fabricated prediction.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from ai.base import (
     Predictor,
     ResultKind,
 )
+from ai.fall_detection.predictor import FallDetectionPredictor
 
 __all__ = [
     "AVAILABLE_PREDICTORS",
@@ -40,9 +45,10 @@ AVAILABLE_PREDICTORS: dict[str, ResultKind] = {
     "anomaly_detection": "anomaly_detection",
 }
 
-#: Which public research dataset each problem will eventually be trained on.
+#: Which public research dataset each problem is trained on (or will be).
 #: Recorded here so the API can state its provenance without reading the
-#: dataset documentation at runtime.
+#: dataset documentation at runtime. `fall_detection` uses SisFall because
+#: UP-Fall's full distribution is ~812 GB — see docs/datasets/sisfall.md.
 PLANNED_DATASETS: dict[str, str] = {
     "fall_detection": "SisFall",
     "activity_recognition": "UCI HAR",
@@ -95,6 +101,10 @@ class UnavailablePredictor:
 def get_predictor(name: str) -> Predictor:
     """Return the predictor registered for `name`.
 
+    Fall detection has a trained model and returns a real predictor; whether it
+    is *usable* still depends on the model file being present, which `is_ready()`
+    reports. The other two return a placeholder that refuses to predict.
+
     Raises `KeyError` for an unknown name, so a typo fails loudly at the call
     site instead of silently returning a placeholder.
     """
@@ -105,14 +115,20 @@ def get_predictor(name: str) -> Predictor:
             f"Unknown predictor {name!r}. Known predictors: "
             f"{sorted(AVAILABLE_PREDICTORS)}"
         ) from None
+
+    if name == "fall_detection":
+        return FallDetectionPredictor()
+
     return UnavailablePredictor(name, kind)
 
 
 def list_predictors() -> list[dict[str, Any]]:
     """Describe every predictor and whether it is actually usable.
 
-    This is what the API reports, so an operator can see at a glance that the
-    AI features are declared but not yet trained.
+    This is what the API reports. For fall detection the entry now carries the
+    real, measured metrics and a model version; the other two still report
+    `is_ready: False` and no metrics, which is the truth rather than a
+    placeholder.
     """
     described: list[dict[str, Any]] = []
     for name in AVAILABLE_PREDICTORS:

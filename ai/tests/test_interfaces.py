@@ -220,32 +220,59 @@ def test_registry_declares_all_three_problems() -> None:
     }
 
 
-def test_no_predictor_is_ready_today() -> None:
-    """No model has been trained, so nothing may claim to be ready."""
-    for name in AVAILABLE_PREDICTORS:
+def test_fall_detection_has_a_real_predictor() -> None:
+    """Fall detection is the one problem with a trained model behind it."""
+    from ai.fall_detection.predictor import FallDetectionPredictor
+
+    assert isinstance(get_predictor("fall_detection"), FallDetectionPredictor)
+
+
+def test_untrained_predictors_still_refuse_to_predict() -> None:
+    """Activity recognition and anomaly detection have no model, and say so.
+
+    Whether a predictor is *usable* depends on a local model file, but these two
+    have no implementation at all, so they must always refuse.
+    """
+    for name in ("activity_recognition", "anomaly_detection"):
         assert get_predictor(name).is_ready() is False
-
-
-def test_predicting_without_a_model_raises_rather_than_guessing() -> None:
-    for name in AVAILABLE_PREDICTORS:
         with pytest.raises(ModelNotLoadedError):
             get_predictor(name).predict(features=[1.0, 2.0, 3.0])
 
 
-def test_unavailable_predictor_reports_no_metrics() -> None:
+def test_untrained_predictors_report_no_metrics() -> None:
     """Metrics must be None, never fabricated numbers."""
-    for name in AVAILABLE_PREDICTORS:
+    for name in ("activity_recognition", "anomaly_detection"):
         info = get_predictor(name).info
         assert info.metrics is None
         assert info.trained_at is None
         assert info.version == ""
 
 
-def test_unavailable_predictor_still_names_its_planned_dataset() -> None:
-    """Provenance is stated even before training, so it cannot be forgotten later."""
+def test_every_predictor_names_its_dataset() -> None:
+    """Provenance is stated whether or not a model exists yet."""
     assert get_predictor("fall_detection").info.dataset == "SisFall"
     assert get_predictor("activity_recognition").info.dataset == "UCI HAR"
     assert get_predictor("anomaly_detection").info.dataset == "CASAS"
+
+
+def test_fall_detection_never_fabricates_metrics_when_no_model_is_present() -> None:
+    """With no model file on disk, the predictor must report nothing, not zeros.
+
+    The repository does not commit trained models, so this is the state a fresh
+    clone is in. The predictor must behave honestly there too.
+    """
+    from ai.fall_detection.predictor import FallDetectionPredictor
+
+    predictor = FallDetectionPredictor(model_dir="C:/does/not/exist")
+    assert predictor.is_ready() is False
+
+    info = predictor.info
+    assert info.metrics is None
+    assert info.version == ""
+    assert info.trained_at is None
+
+    with pytest.raises(ModelNotLoadedError, match="not found"):
+        predictor.predict(features=[[0.0, 0.0, 1.0]] * 500)
 
 
 def test_unknown_predictor_name_fails_loudly() -> None:
@@ -255,7 +282,7 @@ def test_unknown_predictor_name_fails_loudly() -> None:
 
 
 def test_predictors_satisfy_the_protocol() -> None:
-    """The placeholders must be usable wherever a real predictor is expected."""
+    """Every predictor must be usable wherever the protocol is expected."""
     for name in AVAILABLE_PREDICTORS:
         assert isinstance(get_predictor(name), Predictor)
 
@@ -265,10 +292,12 @@ def test_list_predictors_summarises_every_problem() -> None:
 
     assert len(described) == 3
     assert {entry["name"] for entry in described} == set(AVAILABLE_PREDICTORS)
-    # Every entry must admit it is not ready and has no measured metrics.
-    assert all(entry["is_ready"] is False for entry in described)
-    assert all(entry["metrics"] is None for entry in described)
-    assert all(entry["model_version"] is None for entry in described)
+    # The two untrained problems must admit it.
+    by_name = {entry["name"]: entry for entry in described}
+    for name in ("activity_recognition", "anomaly_detection"):
+        assert by_name[name]["is_ready"] is False
+        assert by_name[name]["metrics"] is None
+        assert by_name[name]["model_version"] is None
 
 
 def test_model_info_metrics_default_to_none() -> None:

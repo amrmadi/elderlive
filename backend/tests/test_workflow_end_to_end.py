@@ -245,26 +245,47 @@ def test_full_caregiver_workflow_from_registration_to_resolved_alert(
     assert denied_ack.status_code == 403
 
 
-def test_workflow_reports_that_no_ai_model_is_loaded(
+def test_workflow_reports_ai_capabilities_honestly(
     client: TestClient, caregiver_user: User
 ) -> None:
-    """The AI half of the journey: capabilities are declared, predictions are not.
+    """The AI half of the journey: capabilities are declared, results are honest.
 
-    Pairing this with the workflow above makes the project's central honesty
-    claim testable: the care features work on real stored data, while the AI
-    features state plainly that they are not trained yet.
+    Pairing this with the workflow above makes a central honesty claim testable:
+    the care features work on real stored data, and the AI features report their
+    own state truthfully.
+
+    Fall detection now has a trained model, but the model file is git-ignored and
+    may legitimately be absent (a fresh clone), so both outcomes are possible.
+    What must hold either way is that a prediction is never returned without a
+    model, and that a returned prediction is flagged as research data rather than
+    a live reading of a resident.
     """
     headers = auth_headers(client, caregiver_user.email)
 
     capabilities = client.get(f"{API}/ai/predictors", headers=headers)
     assert capabilities.status_code == 200, capabilities.text
-    assert capabilities.json()["any_ready"] is False
+    body = capabilities.json()
+    assert body["any_ready"] is any(p["is_ready"] for p in body["predictors"])
 
+    # The two problems with no model must always be unavailable.
+    by_name = {p["name"]: p for p in body["predictors"]}
+    assert by_name["activity_recognition"]["is_ready"] is False
+    assert by_name["anomaly_detection"]["is_ready"] is False
+
+    fall_ready = by_name["fall_detection"]["is_ready"]
     attempt = client.post(
         f"{API}/ai/predictors/fall_detection/check", headers=headers
     )
-    assert attempt.status_code == 503
-    assert attempt.json()["error"]["code"] == "MODEL_NOT_LOADED"
+
+    if fall_ready:
+        assert attempt.status_code == 200, attempt.text
+        result = attempt.json()
+        # A capability check must never look like a real reading of a person.
+        assert result["is_simulated"] is True
+        assert result["source"] == "imported_dataset"
+    else:
+        assert attempt.status_code == 503
+        assert attempt.json()["error"]["code"] == "MODEL_NOT_LOADED"
 
 
 def test_workflow_health_check_reports_a_connected_database(

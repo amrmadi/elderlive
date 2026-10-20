@@ -18,8 +18,10 @@ class PredictorStatus(BaseModel):
     )
     is_ready: bool = Field(
         description=(
-            "True only when a trained model is loaded. **False today for every "
-            "predictor** — no model has been trained yet."
+            "True only when a trained model is loaded and can be used. This "
+            "depends on the model file being present on the machine running the "
+            "API, so it may legitimately be false even where a model has been "
+            "trained."
         ),
     )
     model_version: str | None = Field(
