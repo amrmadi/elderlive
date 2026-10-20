@@ -42,6 +42,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.base import Base, utcnow
 from backend.app.models.enums import (
+    TIME_OF_DAY_CHECK,
     CarePlanStatus,
     CheckinType,
     PlanItemKind,
@@ -217,7 +218,7 @@ class MedicationSchedule(Base):
             name="medication_recurrence_valid",
         ),
         CheckConstraint(
-            "time_of_day IS NULL OR time_of_day ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'",
+            TIME_OF_DAY_CHECK,
             name="medication_time_of_day_format",
         ),
         Index("ix_medication_schedules_profile_active", "elderly_profile_id", "is_active"),
@@ -308,7 +309,7 @@ class Reminder(Base):
             name="reminder_day_of_week_range",
         ),
         CheckConstraint(
-            "time_of_day IS NULL OR time_of_day ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'",
+            TIME_OF_DAY_CHECK,
             name="reminder_time_of_day_format",
         ),
     )
@@ -357,7 +358,7 @@ class CheckinSchedule(Base):
             name="checkin_schedule_recurrence_valid",
         ),
         CheckConstraint(
-            "time_of_day IS NULL OR time_of_day ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'",
+            TIME_OF_DAY_CHECK,
             name="checkin_schedule_time_of_day_format",
         ),
     )

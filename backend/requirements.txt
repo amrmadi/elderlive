@@ -51,7 +51,18 @@ psycopg[binary]>=3.3.6     # 3.3.6 is the first release with a cp315 wheel
 pydantic>=2.12.0           # pulls pydantic-core >=2.41, which has cp315 wheels
 pydantic-settings>=2.10.0
 python-dotenv>=1.1.0
+email-validator>=2.2.0     # validates EmailStr fields in the API schemas
+
+# --- Authentication (Phase 3) ---
+# pwdlib is the modern replacement for passlib; argon2 is the default algorithm.
+pwdlib[argon2]>=0.2.0
+bcrypt>=4.2.0              # argon2 fallback / bcrypt hash support
+PyJWT>=2.10.0              # signed access tokens
 
 # --- Testing ---
-pytest==8.3.4
+# aiosqlite lets the test suite run against an in-memory SQLite database, so
+# tests need no PostgreSQL server, no Docker, and no network.
+aiosqlite>=0.20.0
+pytest>=9.1.1
+pytest-asyncio>=0.25.0
 httpx==0.28.1

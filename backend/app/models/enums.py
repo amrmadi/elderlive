@@ -23,6 +23,37 @@ class StrEnum(str, Enum):
         return self.value
 
 
+# ---------------------------------------------------------------------------
+# Portable SQL check for an "HH:MM" 24-hour time string
+# ---------------------------------------------------------------------------
+# PostgreSQL has a regex operator (`~`), but SQLite does not — using it made
+# the schema impossible to create in the SQLite test database
+# (`sqlite3.OperationalError: near "~": syntax error`).
+#
+# The expression below uses only standard SQL string functions that both
+# engines implement, so the same constraint works in development, in tests,
+# and in production:
+#
+#   * length is exactly 5
+#   * character 3 is ':'
+#   * hours are '00'-'23'
+#   * minutes are '00'-'59'
+#
+# It is deliberately simple and readable rather than a clever one-liner.
+TIME_OF_DAY_CHECK = (
+    "time_of_day IS NULL OR ("
+    "length(time_of_day) = 5"
+    " AND substr(time_of_day, 3, 1) = ':'"
+    " AND substr(time_of_day, 1, 2) BETWEEN '00' AND '23'"
+    " AND substr(time_of_day, 4, 2) BETWEEN '00' AND '59'"
+    " AND substr(time_of_day, 1, 1) BETWEEN '0' AND '9'"
+    " AND substr(time_of_day, 2, 1) BETWEEN '0' AND '9'"
+    " AND substr(time_of_day, 4, 1) BETWEEN '0' AND '9'"
+    " AND substr(time_of_day, 5, 1) BETWEEN '0' AND '9'"
+    ")"
+)
+
+
 class UserRole(StrEnum):
     """What a user account is allowed to do (enforced from Phase 4 onward)."""
 
