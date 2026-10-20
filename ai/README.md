@@ -1,54 +1,75 @@
-# `ai/` — Machine learning code
+# `ai/` — Typed AI interfaces
 
-**Purpose:** the three AI problems of the project, kept as a plain Python package that the
-backend imports. Keeping AI separate makes models testable without a server or database.
+**Purpose:** the shared, typed interfaces the backend depends on. This is a
+plain Python package that the backend imports, which keeps AI result types
+testable without a server or a database.
 
-| Subfolder | Problem | Dataset | Status |
-|---|---|---|---|
-| [`fall_detection/`](fall_detection/) | Is this a fall? | **SisFall** | ✅ **trained** — F1 0.80 on unseen adults |
-| [`activity_recognition/`](activity_recognition/) | What activity is happening? | UCI HAR | Declared, no model |
-| [`behavioral_analysis/`](behavioral_analysis/) | Is today's routine unusual? | CASAS | Declared, no model |
+> **This folder is a backend dependency, not AI work.** The backend's AI router
+> does `from ai.base import ...`, so the API cannot start without this package.
+> Model training and the trained model files are **not part of this
+> repository** — see [Not in this repository](../README.md#not-in-this-repository).
 
-The dataset column reflects what each problem is actually trained on. Fall detection uses
-SisFall rather than the originally-planned UP-Fall, whose full distribution is ~812 GB and
-was not practical; see [`../docs/datasets/sisfall.md`](../docs/datasets/sisfall.md).
+## What is here
 
-**Shared rules for all AI subfolders:**
-1. Pure functions: data in → prediction out. No HTTP, no database calls inside.
-2. Training scripts write model files to `ai/models/` (git-ignored). No model is committed,
-   so a fresh clone must train before the API reports a predictor as ready.
-3. Every model records version + metrics; results carry `.model_version`.
-4. Tests run without network access or downloaded datasets for the pure logic; tests that
-   need the archive or the model are skipped automatically when those are absent.
-5. Nothing is trained until its dataset is downloaded **and** documented in
-   [`../docs/datasets/`](../docs/datasets/README.md).
+| File | Contents |
+|---|---|
+| [`base.py`](base.py) | The typed result classes (`FallDetectionResult`, `ActivityResult`, `AnomalyResult`), `ModelInfo`, the `Predictor` protocol, and `ModelNotLoadedError` |
+| [`registry.py`](registry.py) | Looks up a predictor by name; reports whether each is usable |
+| `activity_recognition/`, `behavioral_analysis/` | Placeholder folders documenting the declared problems |
+
+## What is *not* here
+
+- **No trained model.** `ai/models/` is git-ignored and empty in a fresh clone.
+- **No training code.** Preprocessing and training scripts are out of scope for
+  this repository.
+- **No datasets.** Public research data is never committed.
+
+Because no model is shipped, **every** predictor reports `is_ready: false` and
+calling one raises `ModelNotLoadedError`, which the API turns into an honest
+**HTTP 503 `MODEL_NOT_LOADED`** rather than a plausible-looking guess.
+
+```python
+>>> from ai.registry import list_predictors
+>>> [(p["name"], p["is_ready"], p["metrics"]) for p in list_predictors()]
+[('fall_detection', False, None),
+ ('activity_recognition', False, None),
+ ('anomaly_detection', False, None)]
+```
+
+`metrics` is `None`, never zeros or placeholders — fabricated evaluation numbers
+would be worse than no numbers.
+
+## The three declared problems
+
+| Problem | Dataset it would use | Status here |
+|---|---|---|
+| Fall detection | SisFall | Declared, **no model shipped** |
+| Activity recognition | UCI HAR | Declared, no model |
+| Behavioural anomaly detection | CASAS | Declared, no model |
+
+The dataset names are recorded in `registry.py` so the API can state its intended
+provenance without reading documentation at runtime.
 
 ## The contract
 
-Every predictor implements the `Predictor` protocol in [`base.py`](base.py) and returns one
-of the typed results. Two honesty rules are enforced by the types themselves:
+Every predictor implements the `Predictor` protocol in [`base.py`](base.py) and
+returns one of the typed results. Two honesty rules are enforced by the types
+themselves:
 
 1. A result derived from `simulated` or `imported_dataset` input is flagged
-   `is_simulated=True`, so public research data can never be presented as a resident's own
-   reading.
-2. A predictor with no model raises `ModelNotLoadedError`, which the API turns into an
-   honest **503 `MODEL_NOT_LOADED`** rather than a plausible-looking guess.
+   `is_simulated=True`, so public research data can never be presented as a
+   resident's own reading.
+2. A predictor with no model raises `ModelNotLoadedError`, which the API turns
+   into **503 `MODEL_NOT_LOADED`** rather than a guess.
 
-[`registry.py`](registry.py) is how the backend asks for a predictor by name. Today
-`fall_detection` returns a real predictor; the other two return a placeholder that refuses
-to predict.
+## How the backend uses it
 
-## Tests
+`backend/app/api/routers/ai.py` exposes:
 
-```
-.venv\Scripts\python.exe -m pytest ai\tests -q
-```
+- `GET /api/v1/ai/predictors` — the capability list
+- `GET /api/v1/ai/predictors/{name}` — one predictor's metadata
+- `POST /api/v1/ai/predictors/{name}/check` — run a prediction (returns `503`
+  here, because no model is shipped)
 
-`test_interfaces.py` covers the shared types and the honesty rules; `test_preprocess.py`
-covers parsing, the subject-wise split and the train-only scaler rule;
-`test_fall_predictor.py` covers both the no-model and trained-model paths.
-
-## Status
-
-Phase 5 (AI) is under way: fall detection is implemented and trained. Activity recognition
-and behavioural analysis remain declared-but-untrained (milestones M6 and M7).
+These are covered by `backend/tests/test_ai_api.py`, which asserts that the
+endpoint never fabricates a label.

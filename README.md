@@ -1,28 +1,20 @@
-# ElderLife AI
+# ElderLife AI — Backend & Frontend
 
-![Backend tests](https://img.shields.io/badge/backend%20%2B%20AI%20tests-289%20passing-brightgreen)
+![Backend tests](https://img.shields.io/badge/backend%20tests-205%20passing-brightgreen)
 ![Frontend tests](https://img.shields.io/badge/frontend%20tests-43%20passing-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.11--3.13%20recommended-blue)
 ![Node](https://img.shields.io/badge/node-20%2B-blue)
-![License](https://img.shields.io/badge/license-academic-lightgrey)
 
 > **Graduation project.** A monitoring system that helps caregivers look after
 > elderly people living at home.
 
-> **Current status: the application runs, is tested, and has been deployed with
-> Docker Compose.** Backend, frontend, database schema, alert rules, analytics
-> SQL, and a **trained fall-detection model** all exist and are verified. The
-> fall-detection model was trained on the public **SisFall** dataset and its
-> measured results are published in
-> [`ai/fall_detection/README.md`](ai/fall_detection/README.md); activity
-> recognition and behavioural analysis remain designed-but-untrained, and the API
-> says so rather than guessing. The trained model file is **not committed**, so a
-> fresh clone reports `is_ready: false` until it is retrained — see
-> [Real predictions vs simulated events](#real-predictions-vs-simulated-events).
-> The container stack has been built and run on this machine: PostgreSQL 16,
-> the API, and the nginx frontend all come up healthy, migrations apply to real
-> PostgreSQL, and the frontend was exercised against the live backend. See
-> [What actually works today](#what-actually-works-today).
+This repository contains the **backend API** and the **frontend web app**.
+Together they cover the care-management half of the project: residents, care
+plans, check-ins, alerts, access control, and analytics.
+
+AI model training, the Power BI reporting layer, and the Docker deployment
+configuration are **not part of this repository** — see
+[Not in this repository](#not-in-this-repository).
 
 ---
 
@@ -30,73 +22,101 @@
 
 | If you want to… | Read |
 |---|---|
-| **Know what is finished and what is not** | [What actually works today](#what-actually-works-today) |
-| **Run the project on your own machine** | [Getting started on Windows](#getting-started-on-windows) |
-| **Work on the remaining AI / analytics / DevOps tasks** | [`CONTRIBUTING.md`](CONTRIBUTING.md) — task list and how to submit changes |
-| **Understand the architecture** | [`docs/architecture.md`](docs/architecture.md) |
-| **See the API surface** | [`docs/api-contract.md`](docs/api-contract.md) |
+| **Run it on your own machine** | [Quick start](#quick-start) |
+| **Know what is finished** | [What works today](#what-works-today) |
+| **Work on the remaining tasks** | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| **See every endpoint** | [`backend/README.md`](backend/README.md) |
+| **Understand the frontend** | [`frontend/README.md`](frontend/README.md) |
 
 ---
 
-## Division of work
+## Quick start
 
-This repository was built in phases. The table records **who owns what**, so a
-teammate can pick up a task without stepping on someone else's work.
+The backend and frontend are **two separate processes**. Start the backend
+first. Run commands from the repository root unless stated otherwise.
 
-| Area | Owner | State |
-|---|---|---|
-| **Backend API** (`backend/`) | **Backend developer** | ✅ Delivered — 289 tests pass |
-| **Frontend** (`frontend/`) | **Frontend developer** | ✅ Delivered — builds, 43 tests pass |
-| Database schema + migrations | Backend developer | ✅ Delivered |
-| Access control (server-side) | Backend developer | ✅ Delivered |
-| Alert rules engine + KPIs | Backend developer | ✅ Delivered |
-| **Activity recognition model** | *Open — AI teammate* | ⬜ Not started |
-| **Behavioural anomaly model** | *Open — AI teammate* | ⬜ Not started |
-| **Power BI report** | *Open — analytics teammate* | ⬜ Not started (CSV exports exist) |
-| **Real-time alerts (WebSocket)** | *Open — backend teammate* | ⬜ Not started |
-| **CI pipeline** | *Open — DevOps teammate* | ⬜ Not started |
+### 1. Backend
 
-The open items are listed with acceptance criteria in
-[`CONTRIBUTING.md`](CONTRIBUTING.md#open-tasks). Everything marked ✅ has been run
-and verified on this machine; the evidence is in
-[What actually works today](#what-actually-works-today).
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+
+# Create the schema. Run from backend/ — alembic.ini lives there.
+cd backend
+$env:DATABASE_URL = "sqlite+pysqlite:///./elderlife_local_dev.db"
+..\.venv\Scripts\alembic.exe upgrade head
+
+# Start the API (keep DATABASE_URL set in this shell)
+..\.venv\Scripts\uvicorn.exe backend.app.main:app --reload
+```
+
+- API: <http://localhost:8000>
+- Interactive docs: <http://localhost:8000/docs>
+- Health: <http://localhost:8000/health>
+
+> `DATABASE_URL` defaults to **PostgreSQL**. The SQLite line above is the quick
+> path and needs nothing extra installed.
+
+### 2. Demo data
+
+```powershell
+.\.venv\Scripts\python.exe -m backend.scripts.seed_demo --reset
+```
+
+This creates four throwaway logins, all with password `DemoPassw0rd!23`:
+
+| Email | Role |
+|---|---|
+| `admin@demo.elderlife.example` | admin — sees everything |
+| `caregiver.a@demo.elderlife.example` | primary caregiver for Margaret |
+| `caregiver.b@demo.elderlife.example` | secondary for Margaret, **primary for George** |
+| `resident@demo.elderlife.example` | elderly login for Margaret |
+
+> The seed script **refuses to run** when `ENVIRONMENT=production`.
+
+### 3. Frontend
+
+```powershell
+cd frontend
+npm install
+npm run dev        # http://localhost:5173
+```
+
+The frontend defaults to `http://localhost:8000`, so no `.env` file is needed.
+
+> ⚠️ **Open the app at `http://localhost:5173`, not `http://127.0.0.1:5173`.**
+> The backend's CORS allowlist names `localhost` explicitly, so the `127.0.0.1`
+> form is blocked by the browser and every request will fail.
+
+### 4. Sign in and look around
+
+Open <http://localhost:5173> and sign in as
+`caregiver.a@demo.elderlife.example`. Then sign out and sign in as
+`caregiver.b@demo.elderlife.example` — each sees a **different** list of
+residents. That difference is the access control working, enforced on the
+server, not hidden by the UI.
 
 ---
 
-ElderLife AI is a beginner-friendly graduation project: a system that helps monitor the
-well-being of elderly people at home. It aims to:
-
-- detect **falls** from sensor data,
-- recognize daily **activities** (walking, resting, cooking, ...),
-- spot **behavioral anomalies** (unusual routines that may indicate health changes),
-- manage **residents and care plans**,
-- raise **alerts** for caregivers,
-- and produce **analytics** that can be opened in Power BI.
-
-The care-management half is built and works on real stored data. The AI half is
-partly built: **fall detection is trained and evaluated** on the public SisFall
-dataset, while activity recognition and behavioural analysis remain designed but
-untrained. Where a capability is not available, the API says so out loud rather
-than guessing.
-
----
-
-## What actually works today
+## What works today
 
 | Area | State | How it is verified |
 |---|---|---|
-| Database schema | ✅ 19 application tables (+ `alembic_version`) | `alembic upgrade head` creates them; column-by-column comparison against the models shows **no drift** |
-| Backend API (FastAPI) | ✅ auth, profiles, care plans, check-ins, events, alerts, analytics, AI capability routes | **289 automated tests pass** |
-| Access control | ✅ enforced **server-side** | Unassigned caregivers get `403` on profiles, care plans, check-ins, alerts, and alert acknowledgement |
-| Alert lifecycle | ✅ create → acknowledge → resolve, with timestamps | Covered by tests, including double-acknowledge rejection |
-| Frontend (React + TS) | ✅ builds and is unit-tested | `tsc -b` exits 0, `npm run build` exits 0, **43 tests pass** |
-| Analytics SQL | ✅ 8 views; names real tables/columns | **148 column references** checked against the models |
-| AI **interfaces** | ✅ typed, tested | `ai/tests/` covers the result types, the honesty rules and the registry |
-| AI **models / predictions** | 🟨 **fall detection trained**; activity + anomaly not | Fall detection: **F1 0.80** on 6 unseen adult subjects (SisFall). Others return `503 MODEL_NOT_LOADED` |
-| Docker Compose stack | ✅ **built and run; all three services healthy** | PostgreSQL 16, API, nginx; see [Docker](#docker) |
-| Migrations on **real PostgreSQL** | ✅ applied, **no drift** | `alembic upgrade head` → `596dcc02ab32`; `alembic check` → no new operations |
-| Analytics SQL on real PostgreSQL | ✅ **all 8 views created and queried** | Applied with `ON_ERROR_STOP=1`; views return rows from seeded data |
-| Frontend against a live backend | ✅ **verified** | Login → scoped data → all pages `200`, with correct CORS |
+| Database schema | ✅ 19 application tables | `alembic upgrade head` creates them |
+| Auth + JWT | ✅ login, register, current user | covered by tests |
+| Access control | ✅ enforced **server-side** | unassigned caregivers get `403` on profiles, care plans, check-ins and alerts |
+| Elderly profiles | ✅ list / read / create / update | covered by tests |
+| Care plans + items | ✅ API and UI | end-to-end workflow test |
+| Check-ins | ✅ with schedule support | covered by tests |
+| Activity events | ✅ with a `simulated` source value | covered by tests |
+| Alerts | ✅ create → acknowledge → resolve, with timestamps | including double-acknowledge rejection |
+| Alert rules engine | ✅ event → alert, with severity and deduplication | covered by tests |
+| Analytics KPIs | ✅ `/analytics/kpis` and `.csv` | returns `value: null` when the data cannot support a number |
+| AI capability endpoints | ✅ `/ai/predictors*` | every predictor reports `is_ready: false` (no model is shipped here) |
+| Frontend | ✅ React + TypeScript + Vite | `tsc -b` exits 0, `npm run build` exits 0, **43 tests pass** |
+| Backend tests | ✅ | **205 automated tests pass** |
+
+Everything in this table has been run on this machine.
 
 ---
 
@@ -106,11 +126,9 @@ than guessing.
 |---|---|---|
 | Frontend | React + TypeScript + Vite | Modern, typed, fast dev server |
 | Backend | Python + FastAPI | Simple, fast, auto-generated API docs |
-| Database | PostgreSQL (SQLite for local dev/tests) | Reliable relational database |
-| ORM / Migrations | SQLAlchemy + Alembic | Standard Python DB tools |
-| AI / ML | Python (`ai/` package) | Datasets are tabular/sensor based |
-| Analytics | SQL views + CSV exports | Easy to load into Power BI |
-| Deployment | Docker Compose | One command to run the whole stack |
+| Database | PostgreSQL (SQLite for local dev and tests) | Reliable relational database |
+| ORM + migrations | SQLAlchemy + Alembic | Standard Python database tools |
+| Auth | JWT (`PyJWT`) + argon2 password hashing | Signed access tokens |
 
 ---
 
@@ -118,310 +136,101 @@ than guessing.
 
 ```
 ElderLife-AI/
-├── frontend/                 # React + TypeScript + Vite web app
-│   ├── Dockerfile            #   multi-stage: Node build -> nginx runtime
-│   ├── nginx.conf            #   SPA serving + optional /api proxy
-│   └── .dockerignore
 ├── backend/                  # FastAPI application (REST API)
-│   ├── Dockerfile            #   python:3.12-slim, non-root, healthcheck
 │   ├── alembic/              #   database migrations
 │   ├── app/                  #   application code
+│   │   ├── api/routers/      #     endpoint definitions
+│   │   ├── core/             #     config, security
+│   │   ├── models/           #     SQLAlchemy tables
+│   │   ├── schemas/          #     Pydantic request/response types
+│   │   └── services/         #     alert rules, KPI calculations
 │   ├── scripts/seed_demo.py  #   synthetic [DEMO] data
 │   └── tests/                #   backend test suite
-├── ai/                       # Machine-learning code
-│   ├── base.py               #   typed inference interfaces (result types)
-│   ├── registry.py           #   predictor registry (fall detection is real)
-│   ├── tests/                #   interface + preprocessing + predictor tests
-│   ├── fall_detection/       #   ✅ trained on SisFall (preprocess/train/predictor)
-│   ├── activity_recognition/ #   activity classification (planned: UCI HAR)
-│   └── behavioral_analysis/  #   routine / anomaly detection (planned: CASAS)
-├── data/                     # Datasets (mostly git-ignored)
-│   ├── raw/                  #   original downloaded files — never edited
-│   ├── processed/            #   cleaned data produced by scripts
-│   └── sample/               #   small hand-made examples for tests
-├── analytics/
-│   ├── sql/                  #   SQL views/queries feeding Power BI
-│   ├── export_analytics.py   #   CSV export script
-│   └── exports/              #   generated files (git-ignored)
-├── docs/                     # Architecture, API contract, roadmap, datasets
-├── tests/                    # Cross-cutting tests
-├── tools/                    # Offline validators (see "Verification tools")
-├── docker-compose.yml        # db + backend + frontend, with healthchecks
-├── .dockerignore             # Keeps the build context small and secret-free
+├── frontend/                 # React + TypeScript + Vite web app
+│   └── src/
+│       ├── api/              #   typed API client
+│       ├── auth/             #   login state
+│       ├── components/       #   shared UI
+│       └── pages/            #   dashboard, residents, alerts
+├── ai/                       # Typed AI interfaces used by the backend
+│   ├── base.py               #   result types + the Predictor protocol
+│   └── registry.py           #   predictor registry (no model is shipped)
 ├── .env.example              # Placeholder environment variables — copy to .env
+├── pytest.ini                # Test configuration
+├── CONTRIBUTING.md           # How to run, test, and submit work
 └── README.md                 # This file
 ```
 
-Every major folder contains its own `README.md` explaining what belongs there.
+> **Why is there an `ai/` folder?** The backend's AI router imports it
+> (`from ai.base import ...`), so the API cannot start without it. It holds only
+> the typed interfaces and reports "no model available" for every predictor —
+> it is a **backend dependency**, not AI work. See
+> [`ai/README.md`](ai/README.md).
 
 ---
 
-## Prerequisites
+## Not in this repository
 
-| Tool | Required for | Status on this machine |
-|---|---|---|
-| Node.js 20+ | frontend | ✅ installed (v24.13.1) |
-| npm | frontend | ✅ installed (11.8.0) |
-| Python 3.11–3.13 | backend, AI | ⚠️ 3.15.0 installed (see note below) |
-| pip | Python packages | ✅ installed (26.2.1) |
-| Git | version control | ✅ installed (2.53.0) |
-| Docker Desktop | the Compose stack | ✅ installed (29.0.1; engine running via WSL2) |
-| PostgreSQL | local database | ✅ available via the `db` container (16-alpine); no host `psql` |
+These parts of the wider project exist elsewhere and are deliberately **not**
+published here:
 
-**Note on Python 3.15:** it is very new, so some packages have no pre-built wheel
-for it and `pip` tries to compile them from source, which fails on Windows with
-`Microsoft Visual C++ 14.0 or greater is required`. The project pins versions that
-**do** have 3.15 wheels (`pydantic>=2.12`, `psycopg[binary]>=3.3.6`,
-`SQLAlchemy>=2.1.5`) so the backend works today. Installing Python 3.12 removes
-that constraint entirely — and the Docker image uses 3.12, so the pins are not
-needed inside a container.
-
-To install Python 3.12 (requires an **Administrator** PowerShell, then a reboot):
-
-```powershell
-winget install --id Python.Python.3.12 --exact --accept-package-agreements --accept-source-agreements
-```
-
-Then recreate the virtual environment with it:
-
-```powershell
-python3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
-```
-
-To install Docker Desktop (also needs an **Administrator** PowerShell, then a reboot):
-
-```powershell
-winget install --id Docker.DockerDesktop --exact --accept-package-agreements --accept-source-agreements
-```
-
----
-
-## Getting started on Windows
-
-The backend and frontend run as two separate processes. Start the backend first.
-Every command below is run from the **repository root** unless stated otherwise.
-
-### 1. Backend API
-
-Create the virtual environment once:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
-```
-
-The default `DATABASE_URL` targets **PostgreSQL**, which is not installed here.
-To run without PostgreSQL, point the app at SQLite — this is verified to work:
-
-```powershell
-cd backend
-$env:DATABASE_URL = "sqlite+pysqlite:///./elderlife_local_dev.db"
-..\.venv\Scripts\alembic.exe upgrade head          # creates all the tables
-```
-
-> **Why `cd backend` first?** `alembic.ini` lives in `backend/` and finds the
-> migration folder relative to itself. Running `alembic` from the repository root
-> fails with "No config file 'alembic.ini' found". This also applies to the Docker
-> command later.
-
-Then, with `DATABASE_URL` still set in that shell, start the API:
-
-```powershell
-..\.venv\Scripts\uvicorn.exe backend.app.main:app --reload
-```
-
-- API: <http://localhost:8000>
-- Interactive docs: <http://localhost:8000/docs>
-- Health check: <http://localhost:8000/health>
-
-Run the tests (they use in-memory SQLite, so no database is needed):
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-```
-
-### 2. Seed synthetic demo data
-
-From the repository root. The script **refuses to run** when
-`ENVIRONMENT=production`, and only ever touches rows it created:
-
-```powershell
-.\.venv\Scripts\python.exe -m backend.scripts.seed_demo --reset
-```
-
-It prints the accounts it created:
-
-| Email | Password | Role |
-|---|---|---|
-| `admin@demo.elderlife.example` | `DemoPassw0rd!23` | admin — sees everything |
-| `caregiver.a@demo.elderlife.example` | `DemoPassw0rd!23` | primary caregiver for Margaret |
-| `caregiver.b@demo.elderlife.example` | `DemoPassw0rd!23` | secondary for Margaret, primary for George |
-| `resident@demo.elderlife.example` | `DemoPassw0rd!23` | elderly login for Margaret |
-
-> **These are throwaway demo credentials, not secrets.** They are deliberately
-> obvious and are the *only* password that appears anywhere in this repository.
-> Never reuse them, and never put a real password in `.env.example`.
-
-All demo rows are marked `[DEMO]`, and demo activity events use
-`source="simulated"`. See [`backend/README.md`](backend/README.md) for the
-`--reset` / `--force` / `--dry-run` options.
-
-> The demo domain is `demo.elderlife.example`, **not** `.local`. `.local` is a
-> reserved TLD that the API's email validator rejects, so accounts there could be
-> created but never log in. A regression test now guards this.
-
-### 3. Train the fall-detection model (optional, but needed for a live AI feature)
-
-The trained model file is **not committed** (it is ~87 MB and git-ignored), so a
-fresh clone reports fall detection as `is_ready: false`. To train it, first
-download the dataset — it is not committed either; the exact source, size and
-checksum are in [`docs/datasets/sisfall.md`](docs/datasets/sisfall.md):
-
-```powershell
-# after placing the archive at data\raw\SisFall_dataset.zip
-.\.venv\Scripts\python.exe -m ai.fall_detection.train
-```
-
-This prints the measured precision/recall/F1 for the fall class, including the
-worse elderly result, and writes the artefacts to `ai/models/fall_detection/`
-(git-ignored). Training took a few minutes on this machine. Skipping this step is
-fine — everything else works, and the AI endpoints will simply report the model
-as unavailable rather than inventing a prediction.
-
-### 4. Frontend
-
-```powershell
-cd frontend
-npm install
-npm run dev        # http://localhost:5173
-```
-
-The frontend defaults to `http://localhost:8000`, so no `.env` file is required.
-Useful checks:
-
-```powershell
-npx tsc -b         # type check
-npm test           # unit tests
-npm run build      # production build into dist/
-```
-
-See [`frontend/README.md`](frontend/README.md).
-
----
-
-## Docker
-
-**Verified status:** the stack has been **built and run on this machine** and all
-three services come up healthy. What was actually executed and observed:
-
-| Step | Result |
+| Area | Status |
 |---|---|
-| `docker compose config` | Interpolates and validates |
-| `docker compose build` | Both images built (`elderlife-backend`, `elderlife-frontend`) |
-| `docker compose up -d` | `db` → healthy, `backend` → healthy, `frontend` → healthy |
-| `docker compose exec backend alembic upgrade head` | `Running upgrade -> 596dcc02ab32` |
-| `alembic current` / `alembic check` | `596dcc02ab32 (head)` / "No new upgrade operations detected" |
-| `\dt` in PostgreSQL | **20 tables** (19 ORM tables + `alembic_version`) |
-| `seed_demo --reset` | Four demo logins created and verified |
-| Analytics SQL applied with `ON_ERROR_STOP=1` | **8 views created**; all return rows from seeded data |
-| Access control over HTTP | Unassigned caregiver `403`; assigned `200`; admin `200`; anonymous `401` |
-| Login through the browser's CORS path | `200`, `Access-Control-Allow-Origin: http://localhost:5173`; disallowed origin gets no header |
-| nginx responses | Security headers and a single `Cache-Control` on `/`, assets, and deep links |
+| AI model training (fall detection, activity recognition, anomaly detection) | Not included |
+| Public research datasets (SisFall, UCI HAR, CASAS) | Not included |
+| Power BI reporting and CSV exports | Not included |
+| Docker Compose deployment configuration | Not included |
 
-Two real defects were found and fixed by running the stack, which static checks
-had missed: nginx was emitting **no security headers at all** (and two conflicting
-`Cache-Control` headers), because nginx discards server-level `add_header`
-inside a location that declares its own; and the demo seed created an
-**acknowledged alert whose acknowledgement preceded its creation**, producing a
-negative median acknowledgement time in the analytics KPI. Both now have
-regression tests.
-
-### What the stack contains
-
-| Service | Image | Port | Healthcheck |
-|---|---|---|---|
-| `db` | `postgres:16-alpine` | 5432 | `pg_isready` |
-| `backend` | built from `backend/Dockerfile` (python:3.12-slim, non-root) | 8000 | `curl /health` (does a real `SELECT 1`) |
-| `frontend` | built from `frontend/Dockerfile` (Node build → nginx 1.27) | 5173 → 80 | `wget --spider 127.0.0.1` |
-
-The frontend healthcheck probes `127.0.0.1` rather than `localhost`: inside that
-container `localhost` resolves to IPv6 `::1` first while nginx listens on IPv4,
-and the resulting "connection refused" held the container permanently unhealthy.
-
-`backend` waits for `db` to be **healthy**, and `frontend` waits for `backend` to
-be **healthy**, via `depends_on: condition: service_healthy`. Data lives in the
-named volume `elderlife_pgdata`, which survives `docker compose down` but not
-`docker compose down -v`.
-
-### Running it
-
-```powershell
-copy .env.example .env       # then edit the values (see the secret note below)
-docker compose up --build -d
-
-# Create the schema, then load the demo data:
-docker compose exec backend alembic upgrade head
-docker compose exec backend python -m backend.scripts.seed_demo --reset
-```
-
-Open <http://localhost:5173> and sign in with a demo account above.
-
-```powershell
-docker compose logs -f backend     # watch logs
-docker compose down                # stop, keep the database
-docker compose down -v             # stop and delete the database
-```
-
-> **A secret is required for anything beyond a demo.** `SECRET_KEY` signs login
-> tokens. `.env.example` ships an obvious placeholder, and the backend **refuses
-> to start** with `ENVIRONMENT=production` while it is still set. Generate a real
-> one before deploying anywhere:
->
-> ```powershell
-> python -c "import secrets; print(secrets.token_urlsafe(48))"
-> ```
-
-### How the pieces find each other
-
-- Inside Compose, `backend` reaches the database at host **`db`**, not
-  `localhost` — `localhost` inside a container is the container itself.
-- The browser loads the app from the host, so the frontend is built with
-  `VITE_API_BASE_URL=http://localhost:8000`. This is compiled in at **build time**
-  and passed as a build argument.
-- To avoid CORS entirely, build the frontend with
-  `VITE_API_BASE_URL=/api`; `frontend/nginx.conf` then proxies `/api/` to
-  `http://backend:8000`. The proxy block is inert otherwise.
+Because no model is shipped, the AI endpoints honestly report
+`is_ready: false` for every predictor, and calling one returns **`503
+MODEL_NOT_LOADED`**. The API never fabricates a prediction — that rule is
+enforced in code and covered by tests. See
+[Honesty rules](#honesty-rules).
 
 ---
 
-## Verification tools
-
-These checks run offline and are honest about their limits; each exits non-zero
-on failure. They are a **fast pre-flight**, not a substitute for running the
-stack — and they are no longer the only evidence, since the stack itself has now
-been built, started, and exercised (see [Docker](#docker)).
+## Running the tests
 
 ```powershell
-.\.venv\Scripts\python.exe tools\validate_analytics_sql.py    # SQL names real tables/columns
-.\.venv\Scripts\python.exe tools\validate_nginx.py            # nginx.conf structure + add_header inheritance
-.\.venv\Scripts\python.exe tools\verify_no_model_path.py      # AI predictor is honest with and without a model
-node tools\validate-compose-real.js                          # compose + Dockerfile paths
+# Backend — 205 tests. Uses in-memory SQLite, needs no database server.
+.\.venv\Scripts\python.exe -m pytest -q
+
+# Frontend — 43 tests, plus a type check and a production build
+cd frontend
+npm test
+npx tsc -b
+npm run build
 ```
 
-The nginx validator specifically models nginx's `add_header` inheritance rule:
-a security header set at server level is dropped inside any location that
-declares its own, so the validator requires the headers to live in
-`frontend/security-headers.conf` and be `include`d from every content-serving
-location. That class of bug was previously invisible to static checks and only
-showed up once the container was running.
-
-The Compose validator needs a YAML parser. If `js-yaml` is not in the project, it
-can be run against a temporary install without adding a dependency:
+Useful subsets while developing:
 
 ```powershell
-$env:NODE_PATH = "$env:TEMP\somewhere\node_modules"; node tools\validate-compose-real.js
+.\.venv\Scripts\python.exe -m pytest backend\tests -v -k access    # access control
+.\.venv\Scripts\python.exe -m pytest backend\tests -v -k alert     # alert rules
 ```
+
+**A green test run is not proof a feature works.** If you change the seed
+script, the schema, or anything the API serves, start the server and try it.
+
+---
+
+## Honesty rules
+
+These rules are enforced in code and covered by tests, not just written down.
+
+1. **Simulated data is never presented as real.** Demo rows are marked
+   `[DEMO]`; demo events use `source="simulated"`.
+2. **A missing measurement is not an emergency.** Missing check-ins are capped
+   at `low` severity. Alert `severity` is an **operational triage priority** —
+   how urgently a person should look — **not** a validated medical risk score.
+3. **An unavailable capability says so.** A predictor with no model reports
+   `is_ready: false` and returns `503 MODEL_NOT_LOADED` rather than a guess.
+   A KPI whose denominator is zero returns `value: null` with
+   `is_measurable: false` and a stated reason rather than an invented number.
+4. **No secrets, no personal data.** Real credentials live only in your local
+   `.env`. `.env.example` holds placeholders.
+5. **Nothing is "done" until it has been run.** Report what you measured,
+   including results that are worse than expected.
 
 ---
 
@@ -429,144 +238,15 @@ $env:NODE_PATH = "$env:TEMP\somewhere\node_modules"; node tools\validate-compose
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `No config file 'alembic.ini' found` | alembic run from the wrong folder | `cd backend` first — `alembic.ini` lives there |
-| `connection refused` / `could not connect to server` | no PostgreSQL running | Use SQLite: `$env:DATABASE_URL = "sqlite+pysqlite:///./elderlife_local_dev.db"` |
-| `ModuleNotFoundError: No module named 'backend'` | wrong working directory | Run from the repository root, or set `$env:PYTHONPATH = (Get-Location).Path` |
-| Login returns `422` for a demo account | the account predates the demo-domain fix (`.local`) | Re-seed: `python -m backend.scripts.seed_demo --reset` |
-| `Microsoft Visual C++ 14.0 or greater is required` | a package has no Python 3.15 wheel | Install Python 3.12 and recreate `.venv` (see Prerequisites) |
-| Port `8000` / `5432` / `5173` already in use | another service holds the port | Change the left-hand side of the mapping in `docker-compose.yml`, or stop the other process |
-| Backend container starts before the database is ready | missing healthcheck ordering | Already handled: `depends_on` uses `condition: service_healthy` |
-| Frontend loads but every request fails | API URL compiled in at build time | Rebuild with the correct `VITE_API_BASE_URL`, then hard-refresh the browser |
-| `Docker Desktop is unable to start` | the WSL2 backend has no distro/kernel | Run `wsl --install`, or `wsl --update`, then restart Docker Desktop |
-| Frontend container stuck at `health: starting` | nginx probed over IPv6 `localhost` while listening on IPv4 | Healthcheck probes `127.0.0.1` (already fixed in the Dockerfile and Compose) |
-| Stale app after a redeploy | browser cached `index.html` | `nginx.conf` already sends `no-cache` for it; hard-refresh once |
-
----
-
-## Demo walkthrough
-
-A guided tour showing the whole system, using only synthetic data.
-
-1. **Start and seed.** Follow [Getting started](#getting-started-on-windows),
-   then run the seeder. It prints the demo accounts.
-2. **Sign in** at <http://localhost:5173> as
-   `caregiver.a@demo.elderlife.example` / `DemoPassw0rd!23`.
-3. **See the residents.** Margaret Example is assigned to this caregiver. Sign in
-   as `caregiver.b@demo.elderlife.example` to see a different list — this is the
-   access restriction working, enforced by the server, not hidden by the UI.
-4. **Care plan.** Open Margaret, view the care plan and its items.
-5. **Check-in.** Record a wellbeing check-in. Note that the API stamps who
-   recorded it and when.
-6. **Alert.** Open the alerts list. Acknowledge an alert, then resolve it. Notice
-   the acknowledgement records *who* and *when* — that is what the caregiver KPI
-   is computed from.
-7. **Prove the AI is honest.** Call the capability endpoint:
-
-   ```powershell
-   # Needs a token from the login response.
-   curl -H "Authorization: Bearer <token>" http://localhost:8000/api/v1/ai/predictors
-   ```
-
-   Each entry reports its real state. Fall detection is `is_ready: true` **only if
-   the trained model file is present** (retrain with
-   `python -m ai.fall_detection.train`; the file is git-ignored). Activity
-   recognition and anomaly detection always report `is_ready: false`. Asking a
-   predictor with no model to run returns `503` with code `MODEL_NOT_LOADED` — it
-   does **not** invent a prediction. Even when fall detection *is* ready, the
-   `/check` response is flagged `is_simulated: true`, because a capability check
-   must never look like a reading taken from a resident.
-8. **Analytics (PostgreSQL + Docker only).** Apply `analytics/sql/*.sql` and run
-   `analytics/export_analytics.py` to produce CSVs for Power BI.
-
----
-
-## Real predictions vs simulated events
-
-This distinction matters more than anything else in the project, so it is stated
-plainly.
-
-**Simulated events — these exist and work.**
-
-- Demo activity events are written with `source="simulated"`.
-- The database has a `simulated` value in its event-source list specifically so
-  demo data can never be mistaken for a real reading.
-- Alert `severity` is an **operational triage priority** — how urgently a person
-  should look — not a validated medical risk score.
-- A **data gap is never treated as an emergency.** Missing check-ins or silence
-  are capped at `low` severity; the system does not guess that silence means harm.
-
-**Real model predictions — one now exists.**
-
-- **A fall-detection model has been trained** on the public **SisFall** dataset.
-  The measured results — including the worse cross-population result on elderly
-  subjects — are in [`ai/fall_detection/README.md`](ai/fall_detection/README.md).
-- The trained model file is **git-ignored**, so it is not in a fresh clone. Until
-  it is retrained (`python -m ai.fall_detection.train`), the predictor reports
-  `is_ready: false` and `metrics: null` — never placeholder numbers.
-- **Activity recognition and behavioural analysis have no model.** Their
-  predictors report `is_ready: false`, and
-  `POST /api/v1/ai/predictors/{name}/check` returns **`503 MODEL_NOT_LOADED`**.
-- When a predictor has no model it says "not available" rather than producing a
-  plausible-looking answer. When it does have one, the result is flagged as
-  research data (`is_simulated: true`), never as a live reading of a resident.
-
-The distinction is enforced in code and covered by tests, not just documented.
-
----
-
-## Known limitations
-
-- **Only one of the three AI problems has a model.** Fall detection is trained and
-  its honest results are reported (`ai/fall_detection/README.md`). Activity
-  recognition and behavioural analysis are designed but untrained, so for them
-  there are no accuracy, precision, or recall numbers to report, and none are
-  invented. The fall model's elderly result rests on a **single subject** (only
-  one elderly SisFall volunteer simulated falls) and is labelled as such.
-- **PostgreSQL is verified for schema, seeding, and queries — not for load.**
-  Migrations, the 20 tables, the analytics views, and the API were all exercised
-  against a real `postgres:16-alpine` container. What has **not** been tested is
-  behaviour under concurrency, contention, or failover.
-- **The analytics views have only been run over demo data.** All 8 views execute
-  and return rows against a seeded database. They have never been run at a scale
-  where query plans or indexes would matter.
-- **No `.pbix` file exists.** Power BI reports cannot be generated without the
-  desktop application. CSV exports are produced for it instead.
-- **The frontend has been run against the live backend over HTTP and loaded in a
-  real browser**: the dev server serves the app, login succeeds from the browser's
-  origin with correct CORS, and the scoped data loads. Driving every click-path in
-  a browser is still a **manual step** — see
-  [Demo walkthrough](#demo-walkthrough). Loading the login page in a browser
-  exposed a genuine React defect (navigating during render in `LoginPage`), which
-  is now fixed and covered by the existing test suite.
-- **WebSocket / real-time updates are not implemented.** The alert list is
-  fetched, not pushed.
-- **The seed script is development-only** and refuses to run when
-  `ENVIRONMENT=production`.
-- **Authentication is a single `SECRET_KEY` JWT** with no refresh-token rotation
-  and no password-reset flow.
-
----
-
-## Datasets
-
-Three public research datasets are planned: **SisFall** (fall detection),
-**UCI HAR** (activity recognition), and **CASAS** (behavioural analysis).
-
-**SisFall has been downloaded** (232,407,821 bytes, integrity verified) and used
-to train the fall-detection model. It is documented in
-[`docs/datasets/sisfall.md`](docs/datasets/sisfall.md). The other two have **not**
-been downloaded, and no model uses them.
-
-The original plan named **UP-Fall** for fall detection. Its full distribution is
-~812 GB, which is not practical to download or process here, so **SisFall** is
-used instead; [`docs/datasets/up-fall.md`](docs/datasets/up-fall.md) is retained as
-a record of that decision.
-
-Public research data is kept strictly separate from application user records — it
-is git-ignored, and a model result derived from it is always flagged
-`is_simulated: true` so it can never be presented as a resident's own reading.
-Each dataset is documented in [`docs/datasets/`](docs/datasets/README.md)
-(source URL, license, format, labels, preprocessing, limitations) *before* use.
+| `No config file 'alembic.ini' found` | alembic run from the wrong folder | `cd backend` first |
+| `connection refused` to the database | no PostgreSQL running | Use SQLite: `$env:DATABASE_URL = "sqlite+pysqlite:///./elderlife_local_dev.db"` |
+| `ModuleNotFoundError: No module named 'backend'` | wrong working directory | Run from the repository root |
+| `ModuleNotFoundError: No module named 'ai'` | running the backend from outside the repository root | The API imports the local `ai` package; run from the repository root |
+| Every frontend request fails with a CORS error | you opened `127.0.0.1:5173` instead of `localhost:5173` | Use <http://localhost:5173> |
+| Login returns `422` for a demo account | the account predates the demo-domain fix | Re-seed: `python -m backend.scripts.seed_demo --reset` |
+| `Microsoft Visual C++ 14.0 or greater is required` | a dependency has no wheel for your Python version | Install Python 3.12 and recreate `.venv` |
+| Port `8000` / `5173` already in use | another process holds the port | Stop the other process, or change the port |
+| AI endpoint returns `503 MODEL_NOT_LOADED` | no model is shipped in this repository | Expected — see [Not in this repository](#not-in-this-repository) |
 
 ---
 
@@ -575,21 +255,21 @@ Each dataset is documented in [`docs/datasets/`](docs/datasets/README.md)
 | Document | Contents |
 |---|---|
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to run, test, and submit work — plus the open task list |
-| [docs/architecture.md](docs/architecture.md) | Mermaid diagram + component explanation |
-| [docs/api-contract.md](docs/api-contract.md) | API between frontend, backend, AI |
-| [docs/roadmap.md](docs/roadmap.md) | Milestones for every phase |
-| [docs/alert-rules-and-kpis.md](docs/alert-rules-and-kpis.md) | How events become alerts, and how KPIs are computed |
-| [docs/datasets/README.md](docs/datasets/README.md) | Dataset documentation template + index |
+| [backend/README.md](backend/README.md) | Backend layout, endpoints, and conventions |
+| [frontend/README.md](frontend/README.md) | Frontend layout and how it talks to the API |
+| [ai/README.md](ai/README.md) | The typed AI interfaces the backend depends on |
 
 ---
 
-## Honesty rules for this project
+## A note on Python 3.15
 
-1. Features are only described as "working" when they actually run.
-2. No fake production data is committed. Demo data is marked `[DEMO]` and
-   `source="simulated"`.
-3. Real credentials never live in this repository — only in your local `.env`.
-4. Datasets and trained model artifacts are not committed to Git.
-5. An unavailable AI capability reports itself as unavailable; it never returns
-   a plausible-looking guess.
-6. A missing measurement is not treated as a dangerous event.
+The machine this was built on runs Python 3.15, which is new enough that several
+packages have no pre-built wheel, so `pip` tries to compile them from source and
+fails on Windows with `Microsoft Visual C++ 14.0 or greater is required`. The
+project pins versions that **do** have 3.15 wheels, so it works today.
+
+**If you can use Python 3.12, do** — it removes the constraint entirely.
+
+```powershell
+winget install --id Python.Python.3.12 --exact
+```
