@@ -126,3 +126,30 @@ erDiagram
 3. **Dataset tables are separate.** Public research data is training material, never linked to a
    real person's record.
 4. **Soft deletes preserve history.** `is_active = false` keeps alerts and events interpretable.
+
+---
+
+## Reporting layer (views, not tables)
+
+The `analytics/sql/` views are **read-only projections** over the tables above.
+They add no tables and write nothing, so the ERD above is unaffected. They exist
+so Power BI can read aggregate shapes without SQL knowledge.
+
+| View | Grain | Honesty columns it carries |
+|---|---|---|
+| `analytics_checkin_daily` | resident × day | `excluded_pending_count`, `missing_performed_at_count` |
+| `analytics_alerts_daily` | resident × day | `unacknowledged_count`, `deduplicated_alert_count` |
+| `analytics_caregiver_acknowledgement` | caregiver × day | ack latency only for acknowledged alerts |
+| `analytics_care_plan_adherence` | care plan | `excluded_note_count`, `excluded_reminder_count` |
+| `analytics_activity_daily` | resident × day × activity | `simulated_event_count`, `all_events_simulated` |
+| `analytics_model_runs` | model run | `has_metrics`, `has_error` (no invented metrics) |
+| `analytics_resident_rollup` | resident | `verified_fall_events` vs `total_fall_events` |
+| `analytics_kpi_definitions` | KPI | the numerator/denominator text itself |
+
+5. **`alerts.severity` is operational triage priority, not validated medical risk.** A CHECK
+   constraint limits it to `info`/`low`/`medium`/`high`/`critical`, so an unknown level cannot be
+   stored and cannot skew a "high-priority alert" count. Validated risk lives in `risk_events`, and
+   human confirmation lives in the `was_verified` flags — the two are never conflated.
+6. **A missing value can never become an emergency.** The reporting views surface counts of
+   missing/absent data as their own columns rather than dropping them, and the KPI layer returns
+   "not measurable" instead of a number when the denominator is empty.

@@ -234,6 +234,9 @@ GET /api/v1/elderly-profiles/1/activity-events?start=2026-10-19T00:00:00Z&end=20
 | GET | `/api/v1/alerts/{alert_id}` | One alert |
 | PATCH | `/api/v1/alerts/{alert_id}` | Change status or message |
 | POST | `/api/v1/alerts/{alert_id}/acknowledge` | Caregiver confirms; records **who** and **when** |
+| POST | `/api/v1/alerts/{alert_id}/resolve` | Resolve (acknowledges first if needed) |
+| POST | `/api/v1/alerts/{alert_id}/dismiss` | Judge it to need no action; the row is **kept** |
+| GET | `/api/v1/alerts/{alert_id}/timeline` | The alert with `created_at`/`acknowledged_at`/`resolved_at` |
 
 ```json
 // Alert object
@@ -249,6 +252,74 @@ GET /api/v1/elderly-profiles/1/activity-events?start=2026-10-19T00:00:00Z&end=20
 
 Statuses: `new` → `acknowledged` → `resolved` (or `dismissed`). A resolved or dismissed alert
 cannot be acknowledged again (`409 ALERT_ALREADY_CLOSED`).
+
+> **`severity` is operational triage priority, not validated medical risk.** It says how urgently a
+> person should *look*, not how ill the resident is. See
+> [`alert-rules-and-kpis.md`](alert-rules-and-kpis.md).
+
+### 2.1 Alert rule engine (implemented)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/elderly-profiles/{profile_id}/alerts/evaluate` | Judge one observation; returns the decision **and the thresholds used**. Query param `persist=true` to actually create/bump an alert |
+| GET | `/api/v1/alert-rules` | The live rule thresholds, so behaviour is inspectable |
+
+```json
+// POST /api/v1/elderly-profiles/1/alerts/evaluate
+// request
+{
+  "kind": "fall",                  // fall | data_gap | missed_checkin | missed_medication | anomaly | risk
+  "elderly_profile_id": 1,
+  "observed_at": "2026-10-20T18:30:00Z",
+  "values": {"confidence": 0.91},
+  "verified": false
+}
+// response (persist omitted)
+{
+  "observation": { "...": "echoed back" },
+  "match": {
+    "outcome": "triggered",        // or suppressed_no_data / suppressed_below_threshold / suppressed_no_rule
+    "alert_type": "fall",
+    "priority": "high",            // operational triage, not medical risk
+    "title": "Possible fall detected (unverified)",
+    "message": "...",
+    "rule_name": "fall.unverified",
+    "applied_thresholds": {"fall_min_confidence": 0.6, "fall_report_floor": 0.3, "verified": false},
+    "triggered_by_missing_data": false,
+    "should_alert": true
+  },
+  "persisted_alert_id": null,
+  "persisted": false
+}
+```
+
+**Two guarantees this endpoint makes:**
+
+1. **Missing data never becomes an emergency.** A fall with no `confidence` returns
+   `outcome: "suppressed_no_data"` and creates nothing.
+2. **Nothing is persisted unless `persist=true`.** Evaluation is side-effect-free by default.
+
+### 2.2 Analytics (implemented)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/analytics/kpis` | Every KPI for a window (`start`, `end` **required**) |
+| GET | `/api/v1/analytics/kpi-definitions` | Each KPI's numerator, denominator, and missing-data handling |
+| GET | `/api/v1/analytics/kpis.csv` | The same KPI results as a downloadable CSV for Power BI |
+
+**Access: `admin` or `analyst` only** (`403` for caregivers — aggregates are not raw care records).
+
+A KPI with insufficient data returns `is_measurable: false` and a reason, **never a placeholder
+number**. Example:
+
+```json
+{
+  "kpi_key": "alert_acknowledgement_rate", "unit": "ratio",
+  "value": 0.5, "numerator": 1, "denominator": 2,
+  "window_start": "2026-10-20T11:00:00+00:00", "window_end": "2026-10-20T13:00:00+00:00",
+  "excluded_missing": 0, "is_measurable": true, "unmeasurable_reason": null
+}
+```
 
 ---
 
@@ -286,13 +357,13 @@ These appear in earlier drafts and in the architecture diagram. They **do not ex
 | POST | `/ai/fall-detection` | 6 | Fall detection inference |
 | POST | `/ai/activity-recognition` | 6 | Activity classification |
 | POST | `/ai/behavior-check` | 6 | Routine anomaly check |
-| GET | `/analytics/summary` | 7 | Dashboard aggregates |
-| GET | `/analytics/export` | 7 | CSV/Parquet export for Power BI |
+| GET | `/analytics/summary` | 7 | Dashboard aggregates (**the KPI endpoints in §2.2 exist; this exact path does not**) |
+| GET | `/analytics/export` | 7 | CSV export (**`/analytics/kpis.csv` exists; this exact path does not**) |
 | WS | `/ws/alerts` | 5 | Real-time alert push |
 
-> **We will not fake predictions.** Until Phase 6, there are deliberately no AI endpoints.
-> When they are added, a missing model file will return `503 MODEL_NOT_LOADED` rather than a
-> made-up answer.
+> **We will not fake predictions.** Until the AI models are wired in, there are deliberately no AI
+> endpoints. When they are added, a missing model file will return `503 MODEL_NOT_LOADED` rather
+> than a made-up answer.
 
 ---
 

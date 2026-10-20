@@ -10,15 +10,15 @@
 
 | # | Milestone | Covers | Status |
 |---|---|---|---|
-| M0 | Project skeleton | folders, docs, templates | 🟦 (this phase) |
-| M1 | Database | PostgreSQL, SQLAlchemy, Alembic | ⬜ |
-| M2 | Backend core | FastAPI, CRUD, validation | ⬜ |
-| M3 | Frontend core | React + TS + Vite, API client, dashboard | ⬜ |
-| M4 | Care plans | plans, goals, schedules | ⬜ |
-| M5 | Alerts | rules, notifications, real-time updates | ⬜ |
-| M6 | AI / ML | datasets, preprocessing, 3 models, integration | ⬜ |
-| M7 | Analytics | SQL views, exports, Power BI | ⬜ |
-| M8 | Testing | pytest, vitest, model tests, CI | ⬜ |
+| M0 | Project skeleton | folders, docs, templates | ✅ |
+| M1 | Database | PostgreSQL, SQLAlchemy, Alembic | ✅ (SQLite-verified; PostgreSQL run pending) |
+| M2 | Backend core | FastAPI, CRUD, validation | ✅ |
+| M3 | Frontend core | React + TS + Vite, API client, dashboard | 🟦 builds and 43 tests pass; not yet run against a live backend |
+| M4 | Care plans | plans, goals, schedules | 🟦 API done; UI done; not end-to-end verified |
+| M5 | Alerts | rules, notifications, real-time updates | 🟦 rules engine + lifecycle done; WebSocket ⬜ |
+| M6 | AI / ML | datasets, preprocessing, 3 models, integration | ⬜ research done; no training yet |
+| M7 | Analytics | SQL views, exports, Power BI | 🟦 views + exports written; not run on PostgreSQL; no `.pbix` |
+| M8 | Testing | pytest, vitest, model tests, CI | 🟦 191 backend + 43 frontend tests passing; no CI |
 | M9 | Deployment | Dockerfiles, full compose, final docs | ⬜ |
 
 ---
@@ -74,14 +74,17 @@ Tasks:
 
 **Goal:** a typed React app that talks to the backend.
 
-- [ ] Scaffold Vite + React + TypeScript in `frontend/`
-- [ ] Lint + format config (ESLint, Prettier)
-- [ ] One typed API client reading `VITE_API_BASE_URL`
-- [ ] Pages: Dashboard, Residents list/detail (placeholders first, then live data)
-- [ ] Loading / empty / error states for every data view
-- [ ] `vitest` component tests for the API client and key components
+- [x] Scaffold Vite + React + TypeScript in `frontend/`
+- [ ] Lint + format config (ESLint, Prettier) — **only `tsc --noEmit`; no ESLint/Prettier config exists**
+- [x] One typed API client reading `VITE_API_BASE_URL`
+- [x] Pages: Dashboard, Residents list/detail (placeholders first, then live data)
+- [x] Loading / empty / error states for every data view
+- [x] `vitest` tests for the API client and key components — 43 tests in
+      3 files; the HTTP client, the presentation helpers, and the page states
 
 **Done when:** `npm run dev` shows live data fetched from the running backend.
+*(Not yet met: `tsc -b`, `npm run build` and `npm test` all pass, but the app
+has never been run against a live backend — see the honesty note below.)*
 
 ## M4 — Care plans
 
@@ -98,13 +101,17 @@ Tasks:
 
 **Goal:** important events become visible, trackable alerts.
 
-- [ ] Alert model + list/acknowledge endpoints
-- [ ] Rule engine: event → alert (severity, deduplication, cooldown)
+- [x] Alert model + list/acknowledge endpoints
+- [x] Rule engine: event → alert (severity, deduplication, cooldown) —
+      `backend/app/services/alert_rules.py`, explainable and configurable
+- [x] Alert lifecycle: acknowledge / resolve / dismiss + timeline endpoint
 - [ ] WebSocket `/ws/alerts` for real-time UI updates
-- [ ] Alert inbox UI with filters and acknowledge action
+- [x] Alert inbox UI with filters and acknowledge action *(built; not yet run
+      against a live backend)*
 - [ ] (Optional) e-mail/webhook notification channel
 
 **Done when:** a simulated fall event produces an alert that appears live in the UI.
+*(Not yet met: the WebSocket does not exist, so the UI is not live.)*
 
 ## M6 — AI / ML
 
@@ -128,25 +135,41 @@ and the metrics are written down — including failures.
 
 **Goal:** Power BI-compatible reporting without extra services.
 
-- [ ] `analytics/sql/` views: daily activity summary, alert counts, per-resident trends
-- [ ] `analytics/exports/` scripts producing CSV + Parquet on demand
-- [ ] `GET /analytics/summary` for the dashboard
-- [ ] A short guide: how to connect Power BI Desktop to the export files / SQL view
-- [ ] Screenshot of the Power BI report in `docs/` once it exists
+- [x] `analytics/sql/` views: daily check-ins, alerts, caregiver
+      acknowledgement times, care-plan adherence, activity summary, model runs,
+      resident rollup, KPI definitions (7 views + 1 catalogue view)
+- [x] `analytics/export_analytics.py` producing CSV per view on demand, with a
+      `_manifest.json` recording when/where/how many rows *(code complete; not
+      yet executed against PostgreSQL)*
+- [x] `--check-columns`: every `table.column` a view references is verified to
+      exist in the migrated schema (148 references, 20 tables), with a negative
+      control in the test suite so the check cannot silently pass
+- [x] `GET /analytics/kpis`, `/analytics/kpi-definitions`, `/analytics/kpis.csv`
+      *(the draft's `/analytics/summary` path was never built — see
+      [`api-contract.md`](api-contract.md) §4)*
+- [x] A short guide: how to connect Power BI Desktop to the export files / SQL
+      view — [`powerbi-guide.md`](powerbi-guide.md)
+- [ ] Screenshot of the Power BI report in `docs/` once it exists — **no report
+      exists, so there is no screenshot**
 
 **Done when:** Power BI Desktop imports an exported file and renders real data.
+*(Not yet met. No `.pbix` exists and none is claimed.)*
 
 ## M8 — Testing
 
 **Goal:** confidence that changes don't break things.
 
-- [ ] `tests/` layout: `unit/`, `integration/`, `e2e/`
+- [ ] `tests/` layout: `unit/`, `integration/`, `e2e/` — tests currently live in
+      `backend/tests/` and `tests/`, plus colocated `frontend/src/**/*.test.ts(x)`
 - [ ] Backend coverage target: meaningful, not vanity numbers
-- [ ] Frontend component tests; one happy-path browser flow test
+- [x] Frontend component tests — 43 tests (HTTP client, format helpers, page
+      states). *One happy-path browser flow test is still missing.*
 - [ ] AI tests: fixed seeds, no network, no dataset download in CI
 - [ ] GitHub Actions (or local script): lint + test on every push
 
 **Done when:** one command runs the full suite and it is green.
+*194 backend + 43 frontend tests pass, but no single command runs both, and
+there is no CI.*
 
 ## M9 — Deployment
 

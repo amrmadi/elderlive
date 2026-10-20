@@ -87,14 +87,69 @@ directly on Windows.
 
 ## Getting started
 
-Not applicable yet — there is nothing to run. Later phases will add:
+The backend and frontend run as two separate processes. Start the backend first.
+
+### 1. Backend API
 
 ```bash
-# Phase 2+ (not runnable today)
-python -m venv .venv          # Python virtual environment
-npm create vite@latest        # frontend scaffold
-docker compose up -d db       # start PostgreSQL (requires Docker)
+# From the repository root. Create the virtual environment once:
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 ```
+
+The default `DATABASE_URL` targets PostgreSQL (the `docker compose` service),
+which is **not installed on this machine yet**. To run without PostgreSQL,
+point the app at SQLite instead — this is verified to work:
+
+```powershell
+cd backend
+$env:DATABASE_URL = "sqlite+pysqlite:///./elderlife_local_dev.db"
+..\.venv\Scripts\alembic.exe upgrade head          # creates all 20 tables
+```
+
+Then, with `DATABASE_URL` still set in that shell, run the API and the tests:
+
+```powershell
+..\.venv\Scripts\uvicorn.exe backend.app.main:app --reload
+```
+
+- API: <http://localhost:8000>
+- Interactive docs: <http://localhost:8000/docs>
+- Tests (always use in-memory SQLite, so no database is needed):
+  `.\.venv\Scripts\python.exe -m pytest -q`
+
+To seed synthetic demo data, run the seeder as a module from the repository
+root (it refuses to run when `ENVIRONMENT=production`):
+
+```powershell
+.\.venv\Scripts\python.exe -m backend.scripts.seed_demo --reset
+```
+
+All demo rows are marked `[DEMO]` and activity events use
+`source="simulated"`. See [`backend/README.md`](backend/README.md) and the
+script's own docstring for the `--reset` / `--force` / `--dry-run` options.
+
+### 2. Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:5173
+```
+
+The frontend defaults to `http://localhost:8000`, so no `.env` file is required
+for local development. See [`frontend/README.md`](frontend/README.md).
+
+> **Verification status:** both halves build and their test suites pass
+> (191 backend, 43 frontend), and the migration is verified to create the full
+> schema. The frontend has **not** yet been run against a live backend, so the
+> first end-to-end screen-wiring pass is still outstanding.
+
+### 3. Optional — PostgreSQL and the analytics layer
+
+Docker Desktop and PostgreSQL are **not installed** on this machine. Once they
+are, the same commands work against PostgreSQL, and the reporting views and CSV
+exports in [`analytics/`](analytics/README.md) can be generated for Power BI.
 
 ---
 
