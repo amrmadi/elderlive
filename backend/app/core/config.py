@@ -42,6 +42,36 @@ class Settings(BaseSettings):
     backend_port: int = 8000
     allowed_origins: str = "http://localhost:5173"
 
+    # ---- Security (Phase 3) ----
+    # The development default is intentionally obvious and unsafe. Production
+    # MUST override SECRET_KEY via the environment; see `validate_secret_key`.
+    secret_key: str = "dev-only-insecure-secret-change-me"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Allowed browser origins as a list (the frontend dev server)."""
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+    def validate_secret_key(self) -> None:
+        """Refuse to run in production with the placeholder secret key.
+
+        Failing loudly at startup is far better than silently signing real
+        tokens with a publicly-known key.
+        """
+        insecure = "dev-only-insecure-secret-change-me"
+        if self.is_production and self.secret_key == insecure:
+            raise RuntimeError(
+                "SECRET_KEY is still the development placeholder. "
+                "Set a strong, random SECRET_KEY in the environment before "
+                "running in production."
+            )
+        if self.is_production and len(self.secret_key) < 32:
+            raise RuntimeError(
+                "SECRET_KEY must be at least 32 characters in production."
+            )
+
     @property
     def is_production(self) -> bool:
         """True when running in production — used to block destructive scripts."""
