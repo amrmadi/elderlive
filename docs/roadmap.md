@@ -11,15 +11,15 @@
 | # | Milestone | Covers | Status |
 |---|---|---|---|
 | M0 | Project skeleton | folders, docs, templates | ✅ |
-| M1 | Database | PostgreSQL, SQLAlchemy, Alembic | ✅ (SQLite-verified; PostgreSQL run pending) |
+| M1 | Database | PostgreSQL, SQLAlchemy, Alembic | ✅ (SQLite-verified; no drift; PostgreSQL run pending) |
 | M2 | Backend core | FastAPI, CRUD, validation | ✅ |
 | M3 | Frontend core | React + TS + Vite, API client, dashboard | 🟦 builds and 43 tests pass; not yet run against a live backend |
-| M4 | Care plans | plans, goals, schedules | 🟦 API done; UI done; not end-to-end verified |
+| M4 | Care plans | plans, goals, schedules | 🟦 API + UI done; covered end-to-end by the workflow test |
 | M5 | Alerts | rules, notifications, real-time updates | 🟦 rules engine + lifecycle done; WebSocket ⬜ |
-| M6 | AI / ML | datasets, preprocessing, 3 models, integration | ⬜ research done; no training yet |
-| M7 | Analytics | SQL views, exports, Power BI | 🟦 views + exports written; not run on PostgreSQL; no `.pbix` |
-| M8 | Testing | pytest, vitest, model tests, CI | 🟦 191 backend + 43 frontend tests passing; no CI |
-| M9 | Deployment | Dockerfiles, full compose, final docs | ⬜ |
+| M6 | AI / ML | datasets, preprocessing, 3 models, integration | 🟦 typed interfaces + tests done; no dataset, no training |
+| M7 | Analytics | SQL views, exports, Power BI | 🟦 views + exports written; refs checked; not run on PostgreSQL; no `.pbix` |
+| M8 | Testing | pytest, vitest, model tests, CI | 🟦 242 backend + AI + 43 frontend tests passing; no CI |
+| M9 | Deployment | Dockerfiles, full compose, final docs | 🟦 Dockerfiles + compose written and statically validated; never run (Docker not installed) |
 
 ---
 
@@ -125,11 +125,26 @@ has never been run against a live backend — see the honesty note below.)*
 - [ ] **Behavioral anomaly detection** — per-resident routine baseline (e.g. IsolationForest /
       statistics on activity sequences from CASAS)
 - [ ] Model registry: version, metrics, training date stored in `model_versions`
-- [ ] Expose `/ai/*` endpoints; return `503 MODEL_NOT_LOADED` until models exist
-- [ ] Unit tests that run without a database
+- [x] Typed inference interfaces — `ai/base.py` (`FallDetectionResult`,
+      `ActivityResult`, `AnomalyResult`, `ModelInfo`, `Predictor` protocol,
+      `ModelNotLoadedError`) and `ai/registry.py`
+- [x] Expose `/ai/*` endpoints; return `503 MODEL_NOT_LOADED` until models exist
+      (`GET /ai/predictors`, `GET /ai/predictors/{name}`,
+      `POST /ai/predictors/{name}/check`)
+- [x] Unit tests that run without a database or dataset —
+      `ai/tests/test_interfaces.py` (**25 tests**) and
+      `backend/tests/test_ai_api.py` (**13 tests**)
+
+**Honesty rule enforced in code:** `ModelInfo.metrics` is always `None` and every
+predictor reports `is_ready: false` until a real model is loaded. Calling
+`predict()` raises `ModelNotLoadedError` rather than returning a guess. Simulated
+or imported-dataset input is flagged `is_simulated=True`, so demo data cannot be
+presented as a real measurement.
 
 **Done when:** each model beats (or clearly documents) its baseline on a held-out test set,
 and the metrics are written down — including failures.
+*(Not met: no dataset downloaded, no model trained, so there are no metrics to
+report and none are invented.)*
 
 ## M7 — Analytics
 
@@ -160,28 +175,57 @@ and the metrics are written down — including failures.
 **Goal:** confidence that changes don't break things.
 
 - [ ] `tests/` layout: `unit/`, `integration/`, `e2e/` — tests currently live in
-      `backend/tests/` and `tests/`, plus colocated `frontend/src/**/*.test.ts(x)`
+      `backend/tests/`, `ai/tests/`, and `tests/`, plus colocated
+      `frontend/src/**/*.test.ts(x)`
 - [ ] Backend coverage target: meaningful, not vanity numbers
 - [x] Frontend component tests — 43 tests (HTTP client, format helpers, page
       states). *One happy-path browser flow test is still missing.*
-- [ ] AI tests: fixed seeds, no network, no dataset download in CI
+- [x] AI interface tests: no network, no dataset download (`ai/tests/test_interfaces.py`)
+- [x] End-to-end API workflow test: register → profile → care plan → check-in →
+      simulated event → alert → acknowledge → resolve → unassigned caregiver 403
+      (`backend/tests/test_workflow_end_to_end.py`)
+- [x] AI API tests: capability listing, `503 MODEL_NOT_LOADED`, unknown-name 404
+      (`backend/tests/test_ai_api.py`)
+- [x] Seed-script tests: demo credentials actually log in, reset stays surgical
+      (`backend/tests/test_seed_demo.py`)
 - [ ] GitHub Actions (or local script): lint + test on every push
 
 **Done when:** one command runs the full suite and it is green.
-*194 backend + 43 frontend tests pass, but no single command runs both, and
-there is no CI.*
+*`pytest -q` runs **242** backend + AI tests and they pass; `npm test` runs
+**43** frontend tests and they pass. They are still two commands, not one, and
+there is no CI yet.*
 
 ## M9 — Deployment
 
 **Goal:** anyone can start the whole system with one command.
 
-- [ ] `backend/Dockerfile`, `frontend/Dockerfile`
-- [ ] Complete `docker-compose.yml` (db + backend + frontend, healthchecks)
-- [ ] Production build served correctly; env vars documented
-- [ ] README quick-start written for a fresh machine
+- [x] `backend/Dockerfile` — python:3.12-slim, non-root user, `/health` healthcheck
+- [x] `frontend/Dockerfile` — multi-stage Node build → nginx 1.27 runtime
+- [x] `frontend/nginx.conf` — SPA fallback, gzip, security headers, optional `/api/` proxy
+- [x] Complete `docker-compose.yml` — db + backend + frontend, healthchecks,
+      `depends_on: condition: service_healthy`, named volume, private network
+- [x] `.dockerignore` at the root and in `frontend/` (no `.venv`, `node_modules`,
+      `data/raw`, `.env`, or model artifacts in any build context)
+- [x] Production build served correctly (`npm run build` → nginx serves `dist/`)
+- [x] Env vars documented in `.env.example`, including `SECRET_KEY`
+- [x] README quick-start for Windows, troubleshooting table, demo walkthrough,
+      and the real-vs-simulated distinction
+- [ ] **Actually build and run the stack** — requires Docker Desktop, which is
+      not installed on this machine
 - [ ] Backup/restore note for the database volume
 
 **Done when:** `docker compose up` on a clean machine brings the app up end-to-end.
+
+*Current state, stated honestly: the Dockerfiles and Compose file are written
+and **statically validated** — YAML parses, every build context and Dockerfile
+COPY source exists, `DATABASE_URL` addresses the `db` service rather than
+`localhost`, each service has a healthcheck, and no credential patterns appear.
+`tools/validate-compose-real.js` and `tools/validate_nginx.py` perform these
+checks and exit non-zero on failure.*
+
+*But **no container has been built or started**, because Docker is not installed
+here. Static validation cannot prove the images build or that the stack runs, so
+this milestone is **in progress, not done**.*
 
 ---
 

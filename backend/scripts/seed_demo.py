@@ -82,6 +82,16 @@ logger = logging.getLogger("elderlife.seed")
 # is a throwaway credential, and it is long enough to satisfy the API policy.
 DEMO_PASSWORD = "DemoPassw0rd!23"
 
+# The domain every demo account uses, defined once so the accounts, the reset
+# query, and the printed instructions can never drift apart.
+#
+# Why `.example` and not `.local`: the API validates emails with pydantic's
+# `EmailStr`, which rejects `.local` as a special-use TLD — so accounts created
+# at `@demo.elderlife.local` could be seeded but never actually log in. `.example`
+# is reserved by IANA for documentation, so it is guaranteed never to resolve to
+# a real mail server while still being a valid address.
+DEMO_EMAIL_DOMAIN = "demo.elderlife.example"
+
 # A stable marker used to find and delete only the rows this script created.
 DEMO_NOTE_PREFIX = "[DEMO]"
 
@@ -110,8 +120,8 @@ def reset_demo_data(session: Session) -> None:
     """Delete only the rows this script created, identified by a marker.
 
     Being surgical matters: `--reset` must never wipe real data a developer
-    entered by hand, so we only remove rows whose email ends in
-    `@demo.elderlife.local` and the residents whose notes start with `[DEMO]`.
+    entered by hand, so we only remove rows whose email ends in the demo domain
+    and the residents whose notes start with `[DEMO]`.
 
     Deleting the residents explicitly, child table by child table, is
     deliberate. Some child tables (`medication_schedules`, `reminders`,
@@ -123,7 +133,7 @@ def reset_demo_data(session: Session) -> None:
     """
     demo_users = (
         session.execute(
-            select(User).where(User.email.like("%@demo.elderlife.local"))
+            select(User).where(User.email.like(f"%@{DEMO_EMAIL_DOMAIN}"))
         )
         .scalars()
         .all()
@@ -200,15 +210,15 @@ def create_users(session: Session) -> dict[str, User]:
         return user
 
     users = {
-        "admin": make("admin@demo.elderlife.local", "Demo Administrator", UserRole.ADMIN),
+        "admin": make(f"admin@{DEMO_EMAIL_DOMAIN}", "Demo Administrator", UserRole.ADMIN),
         "caregiver_a": make(
-            "caregiver.a@demo.elderlife.local", "Alice Caregiver (demo)", UserRole.CAREGIVER
+            f"caregiver.a@{DEMO_EMAIL_DOMAIN}", "Alice Caregiver (demo)", UserRole.CAREGIVER
         ),
         "caregiver_b": make(
-            "caregiver.b@demo.elderlife.local", "Ben Caregiver (demo)", UserRole.CAREGIVER
+            f"caregiver.b@{DEMO_EMAIL_DOMAIN}", "Ben Caregiver (demo)", UserRole.CAREGIVER
         ),
         "elderly": make(
-            "resident@demo.elderlife.local", "Margaret Example (demo)", UserRole.ELDERLY
+            f"resident@{DEMO_EMAIL_DOMAIN}", "Margaret Example (demo)", UserRole.ELDERLY
         ),
     }
     session.flush()
@@ -442,10 +452,12 @@ def seed(*, reset: bool, force: bool, dry_run: bool) -> None:
 
     logger.info("Demo data created successfully.")
     logger.info("Sign in with any of these (password: %s):", DEMO_PASSWORD)
-    logger.info("  admin@demo.elderlife.local      (admin — sees everything)")
-    logger.info("  caregiver.a@demo.elderlife.local (primary caregiver for Margaret)")
-    logger.info("  caregiver.b@demo.elderlife.local (secondary for Margaret, primary for George)")
-    logger.info("  resident@demo.elderlife.local   (elderly login for Margaret)")
+    logger.info("  admin@%s      (admin — sees everything)", DEMO_EMAIL_DOMAIN)
+    logger.info("  caregiver.a@%s (primary caregiver for Margaret)", DEMO_EMAIL_DOMAIN)
+    logger.info(
+        "  caregiver.b@%s (secondary for Margaret, primary for George)", DEMO_EMAIL_DOMAIN
+    )
+    logger.info("  resident@%s   (elderly login for Margaret)", DEMO_EMAIL_DOMAIN)
 
 
 def main(argv: list[str] | None = None) -> int:

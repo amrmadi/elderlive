@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from backend.app.api.routers import (
+    ai,
     alert_engine,
     analytics,
     auth,
@@ -30,3 +31,4 @@ api_router.include_router(care.router)
 api_router.include_router(events.router)
 api_router.include_router(alert_engine.router)
 api_router.include_router(analytics.router)
+api_router.include_router(ai.router)
