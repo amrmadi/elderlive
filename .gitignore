@@ -1,0 +1,70 @@
+# ============================================================
+# ElderLife AI — .gitignore
+# Purpose: keep secrets, large data, build junk, and OS noise
+# out of the Git repository.
+# ============================================================
+
+# ---- Secrets & local environment ----
+# .env holds real values on your machine; .env.example (placeholders) is committed.
+.env
+.env.*
+!.env.example
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+.vite/
+coverage/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Datasets (large, downloaded manually — see docs/datasets/) ----
+data/raw/**
+!data/raw/.gitkeep
+data/processed/**
+!data/processed/.gitkeep
+
+# ---- Trained model artifacts (regenerate locally; never commit) ----
+*.pkl
+*.joblib
+*.h5
+*.hdf5
+*.pt
+*.pth
+*.onnx
+*.cbm
+ai/**/models/
+
+# ---- Generated analytics exports ----
+analytics/exports/**
+!analytics/exports/.gitkeep
+
+# ---- Databases, logs, temporary files ----
+*.sqlite3
+*.db
+*.log
+*.tmp
+~$*
+
+# ---- OS junk ----
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ---- IDE (uncomment .vscode line if you don't want to share editor settings) ----
+.idea/
+# .vscode/

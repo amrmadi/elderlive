@@ -1,0 +1,57 @@
+# ============================================================
+# ElderLife AI — Docker Compose (Phase 1)
+#
+# Status: ONLY the database service is defined so far.
+# Backend and frontend services will be added in later phases,
+# once their Dockerfiles exist.
+#
+# How to use (requires Docker Desktop, which is NOT yet installed):
+#   docker compose up -d db      # start PostgreSQL in the background
+#   docker compose logs -db      # watch logs
+#   docker compose down          # stop (data is kept in a named volume)
+#   docker compose down -v       # stop AND delete the database data
+#
+# Values fall back to the placeholders in .env.example if no .env exists.
+# ============================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: elderlife-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-elderlife_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_local_only}
+      POSTGRES_DB: ${POSTGRES_DB:-elderlife}
+    ports:
+      # host:container — change the left side if port 5432 is already in use.
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      # Named volume keeps database data between restarts.
+      - elderlife_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-elderlife_dev} -d ${POSTGRES_DB:-elderlife}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ------------------------------------------------------------
+  # Planned for Phase 9 (deployment) — do NOT uncomment yet,
+  # the Dockerfiles do not exist:
+  #
+  # backend:
+  #   build: ./backend
+  #   ports: ["8000:8000"]
+  #   env_file: .env
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #
+  # frontend:
+  #   build: ./frontend
+  #   ports: ["5173:5173"]
+  #   depends_on: [backend]
+  # ------------------------------------------------------------
+
+volumes:
+  elderlife_pgdata:
