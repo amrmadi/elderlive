@@ -9,7 +9,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from backend.app.api.routers import auth, care, events, health, profiles
+from backend.app.api.routers import (
+    alert_engine,
+    analytics,
+    auth,
+    care,
+    events,
+    health,
+    profiles,
+)
 
 api_router = APIRouter()
 
@@ -20,3 +28,5 @@ api_router.include_router(auth.router)
 api_router.include_router(profiles.router)
 api_router.include_router(care.router)
 api_router.include_router(events.router)
+api_router.include_router(alert_engine.router)
+api_router.include_router(analytics.router)

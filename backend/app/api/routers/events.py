@@ -57,7 +57,7 @@ def _enum_value(value):
     response_model=Paginated[ActivityEventRead],
     summary="List a resident's activity history",
     description=(
-        "Returns recorded activity events, newest first. Optional `from`/`to` "
+        "Returns recorded activity events, newest first. Optional `start`/`end` "
         "filters narrow the time window.\n\n"
         "**Access:** the caller must be assigned to the resident."
     ),
