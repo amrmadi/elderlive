@@ -32,6 +32,9 @@ npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# TypeScript incremental build caches (`tsc -b` writes one per project).
+*.tsbuildinfo
+
 # ---- Datasets (large, downloaded manually — see docs/datasets/) ----
 data/raw/**
 !data/raw/.gitkeep
